@@ -1,0 +1,74 @@
+# SmartFarm DakLak - ChirpStack v4 Configuration
+# Optimized for E870-L915LG12 + E90-DTU(900SL22)
+
+[logging]
+  level = 4
+  format = "text"
+
+# ── PostgreSQL ──
+[postgresql]
+  dsn = "postgres://chirpstack:chirpstack@postgres/chirpstack?sslmode=disable"
+
+# ── Redis ──
+[redis]
+  servers = ["redis:6379"]
+
+# ── Network Server ──
+[network_server]
+  # AS923 for Vietnam
+  enabled_regions = ["as923"]
+
+# ── MQTT Integration ──
+[integration]
+  enabled = ["mqtt"]
+
+  [integration.mqtt]
+    server = "tcp://mosquitto:1883"
+    # Use JSON encoding for easy Node-RED parsing
+    json = true
+    # Topic template
+    event_topic_template = "application/{{ .ApplicationID }}/device/{{ .DevEUI }}/event/{{ .EventType }}"
+    command_topic_template = "application/{{ .ApplicationID }}/device/{{ .DevEUI }}/command/{{ .CommandType }}"
+
+# ── Region Server ──
+[region_server]
+  enabled = true
+
+  # AS923 Group 1 (most common for Vietnam)
+  [[region_server.configuration]]
+    region = "AS923"
+    enabled = true
+
+  [[region_server.configuration]]
+    region = "AS923_2"
+    enabled = false
+
+  [[region_server.configuration]]
+    region = "AS923_3"
+    enabled = false
+
+  [[region_server.configuration]]
+    region = "AS923_4"
+    enabled = false
+
+# ── Gateway ──
+[gateway]
+  # Allow gateways to connect without prior registration
+  # (auto-create on first connection)
+  allow_unknown_gateways = true
+
+# ── Device Settings ──
+[device]
+  # Default class for all devices
+  default_class = "A"
+
+# ── API ──
+[api]
+  # Enable REST API
+  bind = "0.0.0.0:8080"
+  # JWT secret (change in production!)
+  secret = "smarfarm-daklak-jwt-secret-2026"
+
+# ── Monitoring ──
+[monitoring]
+  bind = "0.0.0.0:8081"

@@ -1,0 +1,190 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "🌡️ Soil Temperature",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "targets": [
+        {
+          "query": "from(bucket: \"soil_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"soil\")\n  |> filter(fn: (r) => r._field == \"temperature\")\n  |> last()",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "min": -10,
+          "max": 60,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 15 },
+              { "color": "yellow", "value": 35 },
+              { "color": "red", "value": 45 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "💧 Soil Moisture",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "targets": [
+        {
+          "query": "from(bucket: \"soil_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"soil\")\n  |> filter(fn: (r) => r._field == \"moisture\")\n  |> last()",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "green", "value": 40 },
+              { "color": "blue", "value": 80 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "⚡ EC (µS/cm)",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "targets": [
+        {
+          "query": "from(bucket: \"soil_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"soil\")\n  |> filter(fn: (r) => r._field == \"ec\")\n  |> last()",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µS/cm",
+          "min": 0,
+          "max": 5000,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2000 },
+              { "color": "red", "value": 4000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "🧪 pH",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "targets": [
+        {
+          "query": "from(bucket: \"soil_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"soil\")\n  |> filter(fn: (r) => r._field == \"ph\")\n  |> last()",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pH",
+          "min": 0,
+          "max": 14,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 5.5 },
+              { "color": "green", "value": 6.0 },
+              { "color": "green", "value": 7.5 },
+              { "color": "yellow", "value": 8.0 },
+              { "color": "red", "value": 8.5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "🌿 NPK (mg/kg)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "targets": [
+        {
+          "query": "from(bucket: \"soil_data\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"soil\")\n  |> filter(fn: (r) => r._field == \"nitrogen\" or r._field == \"phosphorus\" or r._field == \"potassium\")\n  |> aggregateWindow(every: 5m, fn: mean)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mg/kg",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "auto"
+          }
+        }
+      }
+    },
+    {
+      "title": "📊 All Parameters (24h)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "targets": [
+        {
+          "query": "from(bucket: \"soil_data\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"soil\")\n  |> filter(fn: (r) => r._field == \"temperature\" or r._field == \"moisture\" or r._field == \"ph\")\n  |> aggregateWindow(every: 5m, fn: mean)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "auto"
+          }
+        }
+      }
+    },
+    {
+      "title": "📋 Latest Readings",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "influxdb", "uid": "influxdb" },
+      "targets": [
+        {
+          "query": "from(bucket: \"soil_data\")\n  |> range(start: -1h)\n  |> filter(fn: (r) => r._measurement == \"soil\")\n  |> last()",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["smartfarm", "daklak", "soil"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Ho_Chi_Minh",
+  "title": "SmartFarm DakLak - Soil Monitoring",
+  "uid": "smartfarm-daklak-soil",
+  "version": 1
+}

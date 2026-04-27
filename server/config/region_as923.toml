@@ -1,0 +1,59 @@
+# AS923 Region Configuration for ChirpStack v4
+
+[[region]]
+  name = "AS923"
+
+  [[region.channel]]
+    frequency = 923200000
+    min_dr = 0
+    max_dr = 5
+
+  [[region.channel]]
+    frequency = 923400000
+    min_dr = 0
+    max_dr = 5
+
+  [[region.channel]]
+    frequency = 923600000
+    min_dr = 0
+    max_dr = 5
+
+  [[region.channel]]
+    frequency = 923800000
+    min_dr = 0
+    max_dr = 5
+
+  [[region.channel]]
+    frequency = 924000000
+    min_dr = 0
+    max_dr = 5
+
+  [[region.channel]]
+    frequency = 924200000
+    min_dr = 0
+    max_dr = 5
+
+  [[region.channel]]
+    frequency = 924400000
+    min_dr = 0
+    max_dr = 5
+
+  [[region.channel]]
+    frequency = 924600000
+    min_dr = 0
+    max_dr = 5
+
+  [region.rx1]
+    delay = 1
+    frequency_offset = 0
+
+  [region.rx2]
+    frequency = 923200000
+    dr = 2
+
+  [region.repeater]
+    max_rr = 4
+
+  [region.class_b]
+    ping_slot_frequency = 923400000
+    ping_slot_dr = 3

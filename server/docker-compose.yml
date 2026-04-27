@@ -1,0 +1,147 @@
+version: "3.8"
+
+# ============================================================
+# SmartFarm DakLak - Full Stack
+# ChirpStack v4 + Node-RED + InfluxDB + Grafana + Mosquitto
+# ============================================================
+# Run on Windows: docker compose up -d
+# Access:
+#   ChirpStack : http://localhost:8080  (admin/admin)
+#   Node-RED   : http://localhost:1880
+#   Grafana    : http://localhost:3000  (admin/admin)
+#   InfluxDB   : http://localhost:8086
+#   MQTT       : localhost:1883
+# ============================================================
+
+services:
+
+  # ── PostgreSQL (ChirpStack database) ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: sf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chirpstack
+      POSTGRES_PASSWORD: chirpstack
+      POSTGRES_DB: chirpstack
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chirpstack"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Redis (ChirpStack cache) ──
+  redis:
+    image: redis:7-alpine
+    container_name: sf-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Mosquitto MQTT Broker ──
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: sf-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+
+  # ── ChirpStack Network Server ──
+  chirpstack:
+    image: chirpstack/chirpstack:4
+    container_name: sf-chirpstack
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    ports:
+      - "8080:8080"     # Web UI
+      - "1700:1700/udp" # LoRa packet forwarder
+    volumes:
+      - ./config/chirpstack.toml:/etc/chirpstack/chirpstack.toml
+      - ./config/region_as923.toml:/etc/chirpstack/region_as923.toml
+    environment:
+      - MQTT_BROKER_HOST=mosquitto
+      - MQTT_BROKER_PORT=1883
+
+  # ── Node-RED (Data Processing) ──
+  nodered:
+    image: nodered/node-red:latest
+    container_name: sf-nodered
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - chirpstack
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered-data:/data
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+
+  # ── InfluxDB (Time-Series Storage) ──
+  influxdb:
+    image: influxdb:2.7
+    container_name: sf-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin12345
+      - DOCKER_INFLUXDB_INIT_ORG=smarfarm
+      - DOCKER_INFLUXDB_INIT_BUCKET=soil_data
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=smarfarm-token-2026
+
+  # ── Grafana (Dashboard) ──
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sf-grafana
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - TZ=Asia/Ho_Chi_Minh
+
+volumes:
+  postgres-data:
+  redis-data:
+  mosquitto-data:
+  mosquitto-log:
+  nodered-data:
+  influxdb-data:
+  influxdb-config:
+  grafana-data:
