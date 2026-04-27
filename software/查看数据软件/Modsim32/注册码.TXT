@@ -1,0 +1,12 @@
+Name:            OPTO22
+Company：     APT
+ModScanSN:   54M53564334L3444
+ModSimSN:    N36W2C52L35KL633
+
+ModScan添加自定义窗口后，通过鼠标框选后，会自动提示你选择添加组件，可以查看趋势等功能。
+
+Modsim是虚拟Modbus从设备的，可以配合ModScan或其它设备进行调试。
+
+希望大家多关注 美国OPTO22工控产品。
+
+工控技术QQ群：207149229
