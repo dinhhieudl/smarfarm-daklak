@@ -1,6 +1,6 @@
 # SmartFarm DakLak - Project Progress
 
-> Cập nhật lần cuối: 2026-04-27 23:00 GMT+8
+> Cập nhật lần cuối: 2026-04-28 10:03 GMT+8
 
 ## Tổng quan dự án
 
@@ -96,11 +96,64 @@ smartfarm-daklak/
 - [x] E78-DTU AT command reference → `docs/setup/e78-dtu-at-commands.md`
 - [x] Setup script (Windows + Linux) → `server/setup.bat` + `server/setup.sh`
 - [ ] Test sensor với ModScan32 (commissioning) — **cần hardware**
-- [ ] Cấu hình E78-DTU: AT command cho LoRaWAN join + Modbus polling — **cần hardware**
+- [ ] Cấu hình E78-900TBL: AT command cho LoRaWAN join — **cần hardware**
+- [ ] **Chọn phương án tích hợp sensor** (xem bên dưới) — **chờ quyết định**
 - [ ] Register gateway + device trong ChirpStack — **cần deploy server**
 - [ ] Deploy server (docker compose up -d trên laptop)
 - [ ] Lắp sensor + node ngoài vườn (solar power) — **cần hardware**
 - [ ] Kiểm tra end-to-end data flow — **cần toàn bộ hệ thống**
+
+## ⚠️ E78-900TBL-01A: 3 phương án tích hợp sensor
+
+> Dev board (ASR6505) **không có Modbus polling built-in** như DTU version.
+> Cần thêm 1 lớp xử lý giữa sensor RS485 và board LoRaWAN.
+
+### Option A: MAX485 module nối trực tiếp E78 board
+
+```
+Soil Sensor ←RS485→ MAX485 module ←UART→ E78-900TBL (UART pins)
+```
+
+- **Ưu điểm**: Đơn giản, rẻ (~$2), không cần MCU thứ 2
+- **Nhược điểm**: Cần code firmware cho ASR6505 (đọc UART + Modbus), không có sẵn
+- **Phù hợp**: Nghiên cứu, test nhanh
+- **Chi phí**: ~$2 (MAX485 module)
+
+### Option B: STM32 trung gian (firmware đã có trong repo)
+
+```
+Soil Sensor ←RS485(UART2)→ STM32F103 ←UART1→ E78-900TBL (UART pins)
+```
+
+- **Ưu điểm**: Firmware Modbus đã có sẵn (`software/stm32f103-mini-system/`), RT-Thread RTOS, đã test
+- **Nhược điểm**: Thêm board STM32, thêm nguồn điện, phức tạp hơn
+- **Phù hợp**: Production prototype, nhiều sensor trên 1 bus
+- **Chi phí**: ~$5-8 (STM32 Blue Pill + MAX485)
+
+### Option C: Giữ E78 cho test, mua RAK3172 cho production
+
+```
+Soil Sensor ←RS485→ RAK3172 (built-in) ←LoRaWAN→ E870
+E78-900TBL chỉ dùng để test LoRaWAN join, không connect sensor
+```
+
+- **Ưu điểm**: RAK3172 có RS485 + Modbus built-in, AT command, production-ready, tài liệu tốt
+- **Nhược điểm**: Phải mua thêm (~$12/node), E78 chỉ dùng cho dev/test
+- **Phù hợp**: Triển khai thật, dễ scale
+- **Chi phí**: ~$12/node (RAK3172 breakout board)
+
+### Bảng so sánh
+
+| Tiêu chí | A: MAX485 direct | B: STM32 + MAX485 | C: RAK3172 |
+|----------|-----------------|-------------------|------------|
+| Chi phí thêm | ~$2 | ~$5-8 | ~$12/node |
+| Độ phức tạp | Trung bình | Cao | Thấp |
+| Firmware có sẵn | ❌ Tự viết | ✅ Có trong repo | ✅ AT command |
+| Modbus support | ❌ Tự code | ✅ Đã có | ✅ Built-in |
+| Production ready | ❌ | ⚠️ Prototype | ✅ |
+| Dễ scale | ❌ | ❌ | ✅ (thêm device) |
+
+**Khuyến nghị**: Option C (RAK3172) cho production, Option A/B cho test/learn.
 
 ## Session Context (cho AI)
 
