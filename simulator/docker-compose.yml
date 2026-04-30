@@ -1,0 +1,9 @@
+services:
+  simulator:
+    build: .
+    container_name: sf-simulator
+    ports:
+      - "3001:3001"
+    environment:
+      - MQTT_URL=mqtt://host.docker.internal:1883
+    restart: unless-stopped

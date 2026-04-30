@@ -8,7 +8,7 @@ version: "3.8"
 # Access:
 #   ChirpStack : http://localhost:8080  (admin/admin)
 #   Node-RED   : http://localhost:1880
-#   Grafana    : http://localhost:3000  (admin/admin)
+#   Grafana    : http://localhost:3005  (admin/admin)
 #   InfluxDB   : http://localhost:8086
 #   MQTT       : localhost:1883
 # ============================================================
@@ -66,6 +66,7 @@ services:
   chirpstack:
     image: chirpstack/chirpstack:4
     container_name: sf-chirpstack
+    command: -c /etc/chirpstack
     restart: unless-stopped
     depends_on:
       postgres:
@@ -125,7 +126,7 @@ services:
     depends_on:
       - influxdb
     ports:
-      - "3000:3000"
+      - "3005:3000"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./config/grafana/provisioning:/etc/grafana/provisioning

@@ -7,5 +7,5 @@ contactPoints:
       - uid: default-email
         type: email
         settings:
-          addresses: ""
+          addresses: "admin@localhost"
           singleEmail: false

@@ -2,7 +2,7 @@
 # Optimized for E870-L915LG12 + E90-DTU(900SL22)
 
 [logging]
-  level = 4
+  level = "info"
   format = "text"
 
 # ── PostgreSQL ──
@@ -11,7 +11,7 @@
 
 # ── Redis ──
 [redis]
-  servers = ["redis:6379"]
+  url = "redis://redis:6379"
 
 # ── Network Server ──
 [network_server]
