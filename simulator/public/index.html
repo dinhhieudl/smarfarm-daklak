@@ -262,6 +262,52 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
       <div id="slider-container"></div>
     </div>
 
+    <!-- Scenarios -->
+    <div class="ctrl-section">
+      <h3>🎬 Scenarios</h3>
+      <div id="scenario-status" style="font-size:.75rem;color:var(--text3);margin-bottom:8px">No active scenario</div>
+      <div class="preset-grid" id="scenario-grid"></div>
+      <button class="send-btn" id="stop-scenario-btn" style="margin-top:8px;display:none;border-color:var(--red);color:var(--red)">⏹ Stop Scenario</button>
+    </div>
+
+    <!-- Fault Injection -->
+    <div class="ctrl-section">
+      <h3>🔧 Fault Injection</h3>
+      <div id="fault-status" style="font-size:.75rem;color:var(--text3);margin-bottom:8px">No active faults</div>
+      <div class="preset-grid" id="fault-grid"></div>
+      <button class="send-btn" id="clear-faults-btn" style="margin-top:8px;display:none;border-color:var(--orange);color:var(--orange)">🗑️ Clear Faults</button>
+    </div>
+
+    <!-- Environment Model -->
+    <div class="ctrl-section">
+      <h3>🌍 Environment</h3>
+      <div id="env-display" style="font-size:.75rem;color:var(--text3)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <div>🌡️ Air: <span id="env-air-temp">--</span>°C</div>
+          <div>💧 Humidity: <span id="env-humidity">--</span>%</div>
+          <div>🌧️ Rain: <span id="env-rain">--</span>mm</div>
+          <div>💨 Wind: <span id="env-wind">--</span>km/h</div>
+          <div>☀️ Solar: <span id="env-solar">--</span>W/m²</div>
+          <div>🌿 ET₀: <span id="env-et0">--</span>mm/h</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actuator Feedback -->
+    <div class="ctrl-section">
+      <h3>⚙️ Actuator Feedback</h3>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div class="toggle-row">
+          <label>💧 Irrigation ON</label>
+          <label class="toggle"><input type="checkbox" id="act-irrigation"><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <label>❄️ Cooling ON</label>
+          <label class="toggle"><input type="checkbox" id="act-cooling"><span class="slider"></span></label>
+        </div>
+      </div>
+    </div>
+
     <!-- Auto Mode -->
     <div class="ctrl-section">
       <h3>⚙️ Simulation</h3>
@@ -269,6 +315,10 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
         <div class="toggle-row">
           <label>Auto Mode</label>
           <label class="toggle"><input type="checkbox" id="auto-toggle"><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <label>Physics Engine</label>
+          <label class="toggle"><input type="checkbox" id="physics-toggle" checked><span class="slider"></span></label>
         </div>
         <div class="control-input">
           <label>Interval</label>
@@ -564,8 +614,13 @@ socket.on('init', (state) => {
   document.getElementById('stat-sent').textContent = state.sent;
   state.events.forEach(e => addEventUI(e));
   if (state.config.autoMode) document.getElementById('auto-toggle').checked = true;
+  if (state.config.usePhysics) document.getElementById('physics-toggle').checked = true;
   document.getElementById('interval-input').value = state.config.intervalSec;
   document.getElementById('variation-input').value = state.config.variation;
+
+  // Build scenarios & faults from API
+  fetch('/api/scenarios').then(r => r.json()).then(s => buildScenarios(s.scenarios)).catch(() => {});
+  fetch('/api/faults').then(r => r.json()).then(f => buildFaults(f.faultScenarios)).catch(() => {});
 });
 
 socket.on('sensor_update', (msg) => {
@@ -582,6 +637,70 @@ socket.on('config_update', (cfg) => {
 });
 
 socket.on('event', (evt) => addEventUI(evt));
+
+// ─── Environment updates ──────────────────────────────
+socket.on('env_update', (env) => {
+  document.getElementById('env-air-temp').textContent = (env.airTemperature || 0).toFixed(1);
+  document.getElementById('env-humidity').textContent = (env.humidity || 0).toFixed(0);
+  document.getElementById('env-rain').textContent = (env.rainfall || 0).toFixed(1);
+  document.getElementById('env-wind').textContent = (env.windSpeed || 0).toFixed(0);
+  document.getElementById('env-solar').textContent = (env.solarRadiation || 0).toFixed(0);
+  document.getElementById('env-et0').textContent = (env.et0 || 0).toFixed(2);
+});
+
+// ─── Scenario status ─────────────────────────────────
+socket.on('scenario_status', (status) => {
+  const el = document.getElementById('scenario-status');
+  const stopBtn = document.getElementById('stop-scenario-btn');
+  if (status.active) {
+    el.innerHTML = `<span style="color:var(--green)">▶ ${status.name}</span><br>Phase ${status.phaseIndex + 1}: ${status.phaseName}<br>Tick: ${status.phaseTick}/${status.phaseDuration}`;
+    stopBtn.style.display = 'block';
+  } else {
+    el.textContent = 'No active scenario';
+    stopBtn.style.display = 'none';
+  }
+});
+
+// ─── Fault status ────────────────────────────────────
+socket.on('fault_status', (status) => {
+  const el = document.getElementById('fault-status');
+  const clearBtn = document.getElementById('clear-faults-btn');
+  if (status.active > 0) {
+    el.innerHTML = `<span style="color:var(--orange)">⚠️ ${status.active} active fault(s)</span><br>Dropped: ${status.stats.totalDropped}, Garbage: ${status.stats.totalGarbageSent}`;
+    clearBtn.style.display = 'block';
+  } else {
+    el.textContent = 'No active faults';
+    clearBtn.style.display = 'none';
+  }
+});
+
+// ─── Build Scenarios UI ──────────────────────────────
+function buildScenarios(scenarios) {
+  const grid = document.getElementById('scenario-grid');
+  grid.innerHTML = '';
+  Object.entries(scenarios).forEach(([key, sc]) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.dataset.key = key;
+    btn.innerHTML = `<div class="preset-name">${sc.name}</div><div class="preset-desc">${sc.description}</div>`;
+    btn.onclick = () => { socket.emit('start_scenario', key); };
+    grid.appendChild(btn);
+  });
+}
+
+// ─── Build Faults UI ─────────────────────────────────
+function buildFaults(faultScenarios) {
+  const grid = document.getElementById('fault-grid');
+  grid.innerHTML = '';
+  Object.entries(faultScenarios).forEach(([key, f]) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset-btn';
+    btn.dataset.key = key;
+    btn.innerHTML = `<div class="preset-name">${f.name}</div><div class="preset-desc">${f.description}</div>`;
+    btn.onclick = () => { socket.emit('inject_fault', { type: f.faults?.[0]?.type || key, durationTicks: f.faults?.[0]?.durationTicks || 30, params: f.faults?.[0]?.params }); };
+    grid.appendChild(btn);
+  });
+}
 
 function updateAll(data) {
   GAUGES.forEach(g => {
@@ -628,6 +747,10 @@ document.getElementById('auto-toggle').addEventListener('change', function() {
   socket.emit('set_auto', this.checked);
 });
 
+document.getElementById('physics-toggle').addEventListener('change', function() {
+  socket.emit('set_physics', this.checked);
+});
+
 document.getElementById('interval-input').addEventListener('change', function() {
   socket.emit('set_interval', this.value);
 });
@@ -638,6 +761,22 @@ document.getElementById('variation-input').addEventListener('change', function()
 
 document.getElementById('send-once-btn').addEventListener('click', () => {
   socket.emit('send_once');
+});
+
+document.getElementById('stop-scenario-btn').addEventListener('click', () => {
+  socket.emit('stop_scenario');
+});
+
+document.getElementById('clear-faults-btn').addEventListener('click', () => {
+  socket.emit('clear_faults');
+});
+
+document.getElementById('act-irrigation').addEventListener('change', function() {
+  socket.emit('set_actuator', { key: 'irrigation', value: this.checked });
+});
+
+document.getElementById('act-cooling').addEventListener('change', function() {
+  socket.emit('set_actuator', { key: 'cooling', value: this.checked });
 });
 
 // ─── Resize chart on window resize ────────────────────
