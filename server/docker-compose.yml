@@ -4,7 +4,7 @@ version: "3.8"
 # SmartFarm DakLak - Full Stack
 # ChirpStack v4 + Node-RED + InfluxDB + Grafana + Mosquitto
 # ============================================================
-# Run on Windows: docker compose up -d
+# Run: cp ../.env.example ../.env && docker compose up -d
 # Access:
 #   ChirpStack : http://localhost:8080  (admin/admin)
 #   Node-RED   : http://localhost:1880
@@ -21,16 +21,16 @@ services:
     container_name: sf-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: chirpstack
-      POSTGRES_PASSWORD: chirpstack
-      POSTGRES_DB: chirpstack
+      POSTGRES_USER: ${POSTGRES_USER:-chirpstack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chirpstack}
+      POSTGRES_DB: ${POSTGRES_DB:-chirpstack}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./config/postgres-init:/docker-entrypoint-initdb.d
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chirpstack"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chirpstack}"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -99,7 +99,7 @@ services:
     volumes:
       - nodered-data:/data
     environment:
-      - TZ=Asia/Ho_Chi_Minh
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
 
   # ── InfluxDB (Time-Series Storage) ──
   influxdb:
@@ -113,11 +113,11 @@ services:
       - influxdb-config:/etc/influxdb2
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
-      - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=admin12345
-      - DOCKER_INFLUXDB_INIT_ORG=smarfarm
-      - DOCKER_INFLUXDB_INIT_BUCKET=soil_data
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=smarfarm-token-2026
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USER:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-admin12345}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_INIT_ORG:-smarfarm}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_INIT_BUCKET:-soil_data}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_INIT_ADMIN_TOKEN:-smarfarm-token-2026}
 
   # ── Grafana (Dashboard) ──
   grafana:
@@ -134,10 +134,10 @@ services:
       - ./config/grafana/dashboards:/var/lib/grafana/dashboards
       - ./config/grafana/alerting:/var/lib/grafana/alerting
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
-      - TZ=Asia/Ho_Chi_Minh
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
 
   # ─── Smart Control & Advisory Service ───
   smart-control:
@@ -151,7 +151,13 @@ services:
     environment:
       - MQTT_URL=mqtt://mosquitto:1883
       - PORT=3002
-      - TZ=Asia/Ho_Chi_Minh
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/api/zones"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 volumes:
   postgres-data:

@@ -10,15 +10,29 @@ const cron = require('node-cron');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { origin: '*' } // Allow cross-origin for development
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+// ─── CORS Middleware ──────────────────────────────────
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 
 // ─── Config ───────────────────────────────────────────
 const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost:1883';
 const APP_ID = 'smartfarm-daklak';
 const SIMULATOR_URL = process.env.SIMULATOR_URL || 'http://localhost:3001';
+const MQTT_RECONNECT_INTERVAL = 5000; // ms
+const MAX_CONTROL_HISTORY = 200;
+const MAX_ADVISORY_HISTORY = 100;
 
 // ─── Zone Definitions (DakLak Coffee Farm) ────────────
 const ZONES = [
@@ -128,6 +142,9 @@ let irrigationRules = {
 // ─── Control History ──────────────────────────────────
 let controlHistory = [];
 let advisoryHistory = [];
+
+// ─── Track active irrigation timers for cleanup ───────
+let activeIrrigationTimers = new Map(); // zoneId -> timeout
 
 // ─── Crop Knowledge Base (DakLak Coffee) ──────────────
 const CROP_STAGES = {
@@ -276,6 +293,7 @@ function getCurrentStage(crop, date = new Date()) {
 function getPlantAge(plantDate) {
   const planted = new Date(plantDate);
   const now = new Date();
+  if (isNaN(planted.getTime())) return { months: 0, years: 0 };
   const months = (now.getFullYear() - planted.getFullYear()) * 12 + (now.getMonth() - planted.getMonth());
   return { months, years: Math.floor(months / 12) };
 }
@@ -429,6 +447,17 @@ function generateAdvisory(zone) {
   return { advices, urgency, stage };
 }
 
+// ─── Input Validation Helpers ─────────────────────────
+function isFiniteNumber(val) {
+  return typeof val === 'number' && Number.isFinite(val);
+}
+
+function sanitizeSensorValue(val, min, max) {
+  const num = parseFloat(val);
+  if (!isFiniteNumber(num)) return null;
+  return Math.max(min, Math.min(max, num));
+}
+
 // ─── Auto Irrigation Logic ────────────────────────────
 function checkAutoIrrigation() {
   ZONES.forEach(zone => {
@@ -449,17 +478,16 @@ function checkAutoIrrigation() {
 
     // Check rain pause
     if (rule.rainPause && weatherData.rainfall > rule.rainThreshold) {
-      // Skip irrigation — rain is sufficient
       if (actuator.state === 'open') {
         controlActuator(zone.valveId, 'close', 'auto-rain-pause');
         controlActuator(zone.pumpId, 'off', 'auto-rain-pause');
+        clearIrrigationTimer(zone.id);
       }
       return;
     }
 
-    // Check moisture
+    // Check moisture — start irrigation
     if (sensor.moisture < rule.moistureMin && actuator.state === 'closed') {
-      // Start irrigation
       controlActuator(zone.pumpId, 'on', 'auto');
       controlActuator(zone.valveId, 'open', 'auto');
       rule.lastIrrigation = Date.now();
@@ -473,11 +501,12 @@ function checkAutoIrrigation() {
         time: new Date().toISOString()
       };
       controlHistory.unshift(evt);
-      if (controlHistory.length > 200) controlHistory.pop();
+      if (controlHistory.length > MAX_CONTROL_HISTORY) controlHistory.pop();
       io.emit('control_event', evt);
 
-      // Schedule stop
-      setTimeout(() => {
+      // Schedule stop with tracking
+      clearIrrigationTimer(zone.id);
+      const timer = setTimeout(() => {
         if (actuator.state === 'open') {
           controlActuator(zone.valveId, 'close', 'auto-timeout');
           controlActuator(zone.pumpId, 'off', 'auto-timeout');
@@ -488,13 +517,16 @@ function checkAutoIrrigation() {
             time: new Date().toISOString()
           });
         }
+        activeIrrigationTimers.delete(zone.id);
       }, rule.maxDurationMin * 60000);
+      activeIrrigationTimers.set(zone.id, timer);
     }
 
     // Stop if moisture reached max
     if (sensor.moisture >= rule.moistureMax && actuator.state === 'open') {
       controlActuator(zone.valveId, 'close', 'auto-target-reached');
       controlActuator(zone.pumpId, 'off', 'auto-target-reached');
+      clearIrrigationTimer(zone.id);
       io.emit('control_event', {
         type: 'auto-irrigation-stop',
         zone: zone.id,
@@ -503,6 +535,14 @@ function checkAutoIrrigation() {
       });
     }
   });
+}
+
+function clearIrrigationTimer(zoneId) {
+  const timer = activeIrrigationTimers.get(zoneId);
+  if (timer) {
+    clearTimeout(timer);
+    activeIrrigationTimers.delete(zoneId);
+  }
 }
 
 function controlActuator(actuatorId, action, source = 'manual') {
@@ -515,6 +555,8 @@ function controlActuator(actuatorId, action, source = 'manual') {
     act.state = (action === 'on') ? 'on' : 'off';
   } else if (act.type === 'valve') {
     act.state = (action === 'open') ? 'open' : 'closed';
+  } else {
+    return false;
   }
 
   act.lastChange = new Date().toISOString();
@@ -545,30 +587,41 @@ function addControlEvent(message) {
   io.emit('control_log', evt);
 }
 
-// ─── MQTT ─────────────────────────────────────────────
+// ─── MQTT with Auto-Reconnect ─────────────────────────
 let mqttClient = null;
 let mqttConnected = false;
+let mqttReconnectTimer = null;
 
 function connectMQTT() {
+  if (mqttClient) {
+    mqttClient.removeAllListeners();
+    mqttClient.end(true);
+  }
+
   mqttClient = mqtt.connect(MQTT_URL, {
     clientId: 'smartfarm-control-' + Math.random().toString(16).slice(2, 8),
     clean: true,
-    connectTimeout: 3000
+    connectTimeout: 3000,
+    reconnectPeriod: MQTT_RECONNECT_INTERVAL,
+    keepalive: 60
   });
 
   mqttClient.on('connect', () => {
     mqttConnected = true;
-    // Subscribe to sensor data from simulator
-    mqttClient.subscribe(`application/${APP_ID}/device/+/event/up`);
+    if (mqttReconnectTimer) {
+      clearTimeout(mqttReconnectTimer);
+      mqttReconnectTimer = null;
+    }
+    mqttClient.subscribe(`application/${APP_ID}/device/+/event/up`, { qos: 0 });
     io.emit('mqtt_status', { connected: true });
     addControlEvent('MQTT connected');
+    console.log('[MQTT] Connected to', MQTT_URL);
   });
 
   mqttClient.on('message', (topic, message) => {
     try {
       const payload = JSON.parse(message.toString());
       if (payload.object) {
-        // Update sensor data for matching zone
         const devEUI = payload.devEUI;
         const zone = ZONES.find(z => z.moistureSensor === devEUI);
         if (zone) {
@@ -578,23 +631,31 @@ function connectMQTT() {
           };
           io.emit('zone_sensor', { zoneId: zone.id, data: zoneSensorData[zone.id] });
         }
-        // Also update zone-A from simulator's default device
-        if (devEUI === 'aabbccdd11223344') {
-          zoneSensorData['zone-A'] = { ...payload.object, lastUpdate: new Date().toISOString() };
-          io.emit('zone_sensor', { zoneId: 'zone-A', data: zoneSensorData['zone-A'] });
-        }
       }
-    } catch (e) { /* ignore parse errors */ }
+    } catch (e) {
+      console.warn('[MQTT] Parse error:', e.message);
+    }
   });
 
-  mqttClient.on('error', () => { mqttConnected = false; });
-  mqttClient.on('close', () => { mqttConnected = false; });
+  mqttClient.on('error', (err) => {
+    mqttConnected = false;
+    io.emit('mqtt_status', { connected: false, error: err.message });
+    console.error('[MQTT] Error:', err.message);
+  });
+
+  mqttClient.on('close', () => {
+    mqttConnected = false;
+    io.emit('mqtt_status', { connected: false });
+    console.warn('[MQTT] Disconnected, will auto-reconnect...');
+  });
+
+  mqttClient.on('reconnect', () => {
+    console.log('[MQTT] Reconnecting...');
+  });
 }
 
 // ─── Weather Fetch (Simulated for DakLak) ─────────────
 function updateWeather() {
-  // In production, call Open-Meteo API: https://api.open-meteo.com/v1/forecast?latitude=12.75&longitude=108.35&...
-  // For now, simulate realistic DakLak weather
   const month = new Date().getMonth() + 1;
   const isRainy = month >= 5 && month <= 10;
 
@@ -617,25 +678,24 @@ function updateWeather() {
 }
 
 // ─── Scheduled Tasks ──────────────────────────────────
-// Check auto irrigation every 60 seconds
-cron.schedule('*/1 * * * *', () => {
+const cronJobs = [];
+
+cronJobs.push(cron.schedule('*/1 * * * *', () => {
   checkAutoIrrigation();
-});
+}));
 
-// Update weather every 30 minutes
-cron.schedule('*/30 * * * *', () => {
+cronJobs.push(cron.schedule('*/30 * * * *', () => {
   updateWeather();
-});
+}));
 
-// Generate advisory every 5 minutes
-cron.schedule('*/5 * * * *', () => {
+cronJobs.push(cron.schedule('*/5 * * * *', () => {
   ZONES.forEach(zone => {
     const advisory = generateAdvisory(zone);
     io.emit('advisory', { zoneId: zone.id, ...advisory });
   });
-});
+}));
 
-// ─── WebSocket ────────────────────────────────────────
+// ─── WebSocket (Socket.IO) ────────────────────────────
 io.on('connection', (socket) => {
   // Send initial state
   socket.emit('init', {
@@ -655,28 +715,45 @@ io.on('connection', (socket) => {
     socket.emit('advisory', { zoneId: zone.id, ...advisory });
   });
 
-  // Control actuator
+  // Control actuator — with validation
   socket.on('control', ({ actuatorId, action }) => {
+    if (!actuatorId || !action) return;
+    const validActions = ['on', 'off', 'open', 'close'];
+    if (!validActions.includes(action)) return;
     const success = controlActuator(actuatorId, action, 'manual');
     socket.emit('control_result', { actuatorId, action, success });
   });
 
   // Toggle auto mode for zone
   socket.on('set_auto_mode', ({ zoneId, enabled }) => {
+    if (!zoneId || typeof enabled !== 'boolean') return;
     if (irrigationRules[zoneId]) {
       irrigationRules[zoneId].enabled = enabled;
+      if (!enabled) clearIrrigationTimer(zoneId);
       io.emit('rule_update', { zoneId, rule: irrigationRules[zoneId] });
       addControlEvent(`Auto irrigation ${zoneId}: ${enabled ? 'BẬT' : 'TẮT'}`);
     }
   });
 
-  // Update irrigation rule
+  // Update irrigation rule — with validation
   socket.on('update_rule', ({ zoneId, rule }) => {
-    if (irrigationRules[zoneId]) {
-      Object.assign(irrigationRules[zoneId], rule);
-      io.emit('rule_update', { zoneId, rule: irrigationRules[zoneId] });
-      addControlEvent(`Cập nhật quy tắc tưới ${zoneId}`);
+    if (!zoneId || !rule || !irrigationRules[zoneId]) return;
+    const sanitized = {};
+    if (rule.moistureMin != null) sanitized.moistureMin = sanitizeSensorValue(rule.moistureMin, 0, 100);
+    if (rule.moistureMax != null) sanitized.moistureMax = sanitizeSensorValue(rule.moistureMax, 0, 100);
+    if (rule.maxDurationMin != null) sanitized.maxDurationMin = sanitizeSensorValue(rule.maxDurationMin, 1, 480);
+    if (rule.cooldownMin != null) sanitized.cooldownMin = sanitizeSensorValue(rule.cooldownMin, 10, 1440);
+    if (rule.rainThreshold != null) sanitized.rainThreshold = sanitizeSensorValue(rule.rainThreshold, 0, 200);
+    if (typeof rule.rainPause === 'boolean') sanitized.rainPause = rule.rainPause;
+
+    // Ensure min < max
+    if (sanitized.moistureMin != null && sanitized.moistureMax != null && sanitized.moistureMin >= sanitized.moistureMax) {
+      sanitized.moistureMax = sanitized.moistureMin + 10;
     }
+
+    Object.assign(irrigationRules[zoneId], sanitized);
+    io.emit('rule_update', { zoneId, rule: irrigationRules[zoneId] });
+    addControlEvent(`Cập nhật quy tắc tưới ${zoneId}`);
   });
 
   // Request advisory
@@ -708,7 +785,14 @@ app.get('/api/zones', (req, res) => {
 app.get('/api/actuators', (req, res) => res.json(actuators));
 
 app.post('/api/control', (req, res) => {
-  const { actuatorId, action } = req.body;
+  const { actuatorId, action } = req.body || {};
+  if (!actuatorId || !action) {
+    return res.status(400).json({ error: 'Missing actuatorId or action' });
+  }
+  const validActions = ['on', 'off', 'open', 'close'];
+  if (!validActions.includes(action)) {
+    return res.status(400).json({ error: `Invalid action. Must be one of: ${validActions.join(', ')}` });
+  }
   const success = controlActuator(actuatorId, action, 'api');
   res.json({ success, actuator: actuators[actuatorId] });
 });
@@ -724,6 +808,55 @@ app.get('/api/weather', (req, res) => res.json(weatherData));
 app.get('/api/crop-stages', (req, res) => res.json(CROP_STAGES));
 
 app.get('/api/history', (req, res) => res.json(controlHistory.slice(0, 100)));
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    mqtt: mqttConnected,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ─── Graceful Shutdown ────────────────────────────────
+function gracefulShutdown(signal) {
+  console.log(`\n[${signal}] Shutting down gracefully...`);
+
+  // Stop all cron jobs
+  cronJobs.forEach(job => job.stop());
+
+  // Clear all irrigation timers
+  activeIrrigationTimers.forEach((timer) => clearTimeout(timer));
+  activeIrrigationTimers.clear();
+
+  // Close MQTT
+  if (mqttClient) {
+    mqttClient.end(true);
+  }
+
+  // Close HTTP server
+  server.close(() => {
+    console.log('[Shutdown] HTTP server closed');
+    process.exit(0);
+  });
+
+  // Force exit after 5s
+  setTimeout(() => {
+    console.error('[Shutdown] Forced exit after timeout');
+    process.exit(1);
+  }, 5000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+  gracefulShutdown('uncaughtException');
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[WARN] Unhandled rejection:', reason);
+});
 
 // ─── Start ────────────────────────────────────────────
 const PORT = process.env.PORT || 3002;

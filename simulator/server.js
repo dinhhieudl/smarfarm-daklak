@@ -9,15 +9,29 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { origin: '*' }
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+// ─── CORS Middleware ──────────────────────────────────
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 
 // ─── Config ───────────────────────────────────────────
 const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost:1883';
 const APP_ID = 'smartfarm-daklak';
 const DEV_EUI = 'aabbccdd11223344';
+const MQTT_RECONNECT_INTERVAL = 5000;
+const MAX_EVENTS = 100;
+const MAX_HISTORY = 60;
 
 // ─── Sensor State ─────────────────────────────────────
 let sensorData = {
@@ -43,6 +57,26 @@ let tickTimer = null;
 let mqttClient = null;
 let mqttConnected = false;
 let totalSent = 0;
+
+// ─── Input Validation ─────────────────────────────────
+const SENSOR_RANGES = {
+  temperature: { min: -10, max: 60 },
+  moisture: { min: 0, max: 100 },
+  ec: { min: 0, max: 10000 },
+  salinity: { min: 0, max: 5000 },
+  nitrogen: { min: 0, max: 500 },
+  phosphorus: { min: 0, max: 200 },
+  potassium: { min: 0, max: 500 },
+  ph: { min: 0, max: 14 }
+};
+
+function clampSensorValue(key, value) {
+  const range = SENSOR_RANGES[key];
+  if (!range) return value;
+  const num = parseFloat(value);
+  if (!Number.isFinite(num)) return null;
+  return Math.max(range.min, Math.min(range.max, num));
+}
 
 // ─── DakLak Coffee Soil Presets ───────────────────────
 const PRESETS = {
@@ -78,28 +112,41 @@ const PRESETS = {
   }
 };
 
-// ─── MQTT Connection ──────────────────────────────────
+// ─── MQTT Connection with Auto-Reconnect ──────────────
 function connectMQTT() {
+  if (mqttClient) {
+    mqttClient.removeAllListeners();
+    mqttClient.end(true);
+  }
+
   mqttClient = mqtt.connect(MQTT_URL, {
-    clientId: 'smartfarm-simulator',
+    clientId: 'smartfarm-simulator-' + Math.random().toString(16).slice(2, 8),
     clean: true,
-    connectTimeout: 3000
+    connectTimeout: 3000,
+    reconnectPeriod: MQTT_RECONNECT_INTERVAL,
+    keepalive: 60
   });
 
   mqttClient.on('connect', () => {
     mqttConnected = true;
     io.emit('mqtt_status', { connected: true });
     addEvent('info', 'MQTT connected to ' + MQTT_URL);
+    console.log('[MQTT] Connected to', MQTT_URL);
   });
 
   mqttClient.on('error', (err) => {
     mqttConnected = false;
     io.emit('mqtt_status', { connected: false, error: err.message });
+    console.error('[MQTT] Error:', err.message);
   });
 
   mqttClient.on('close', () => {
     mqttConnected = false;
     io.emit('mqtt_status', { connected: false });
+  });
+
+  mqttClient.on('reconnect', () => {
+    console.log('[MQTT] Reconnecting...');
   });
 }
 
@@ -107,7 +154,6 @@ function connectMQTT() {
 function publishSensorData() {
   const topic = `application/${APP_ID}/device/${DEV_EUI}/event/up`;
 
-  // ChirpStack v4 MQTT format
   const payload = {
     applicationId: APP_ID,
     applicationName: 'SmartFarm',
@@ -115,7 +161,7 @@ function publishSensorData() {
     devEUI: DEV_EUI,
     fCnt: totalSent,
     fPort: 2,
-    data: '', // base64 (we also send decoded object)
+    data: '',
     object: {
       temperature: Math.round(sensorData.temperature * 10) / 10,
       moisture: Math.round(sensorData.moisture * 10) / 10,
@@ -143,7 +189,6 @@ function publishSensorData() {
     totalSent++;
   }
 
-  // Broadcast to all web clients
   io.emit('sensor_update', {
     data: { ...sensorData },
     timestamp: new Date().toISOString(),
@@ -164,15 +209,11 @@ function applyVariation() {
   sensorData.potassium += (Math.random() - 0.5) * 2 * v * 15;
   sensorData.ph += (Math.random() - 0.5) * 2 * v * 0.3;
 
-  // Clamp ranges
-  sensorData.temperature = Math.max(-10, Math.min(60, sensorData.temperature));
-  sensorData.moisture = Math.max(0, Math.min(100, sensorData.moisture));
-  sensorData.ec = Math.max(0, Math.min(10000, sensorData.ec));
-  sensorData.salinity = Math.max(0, Math.min(5000, sensorData.salinity));
-  sensorData.nitrogen = Math.max(0, Math.min(500, sensorData.nitrogen));
-  sensorData.phosphorus = Math.max(0, Math.min(200, sensorData.phosphorus));
-  sensorData.potassium = Math.max(0, Math.min(500, sensorData.potassium));
-  sensorData.ph = Math.max(0, Math.min(14, sensorData.ph));
+  // Clamp ranges using defined bounds
+  Object.keys(SENSOR_RANGES).forEach(key => {
+    const range = SENSOR_RANGES[key];
+    sensorData[key] = Math.max(range.min, Math.min(range.max, sensorData[key]));
+  });
 }
 
 // ─── Event Detection ──────────────────────────────────
@@ -192,7 +233,7 @@ function checkEvents() {
 function addEvent(level, message) {
   const evt = { level, message, time: new Date().toISOString() };
   events.unshift(evt);
-  if (events.length > 100) events.pop();
+  if (events.length > MAX_EVENTS) events.pop();
   io.emit('event', evt);
 }
 
@@ -221,7 +262,6 @@ function stopAutoMode() {
 
 // ─── WebSocket (Socket.IO) ────────────────────────────
 io.on('connection', (socket) => {
-  // Send current state to new client
   socket.emit('init', {
     data: { ...sensorData },
     config: { ...config },
@@ -231,17 +271,18 @@ io.on('connection', (socket) => {
     totalSent
   });
 
-  // Slider change
+  // Slider change — with validation
   socket.on('update_param', ({ param, value }) => {
-    if (sensorData.hasOwnProperty(param)) {
-      sensorData[param] = parseFloat(value);
-      io.emit('sensor_update', {
-        data: { ...sensorData },
-        timestamp: new Date().toISOString(),
-        sent: totalSent,
-        mqttConnected
-      });
-    }
+    if (!sensorData.hasOwnProperty(param)) return;
+    const clamped = clampSensorValue(param, value);
+    if (clamped === null) return;
+    sensorData[param] = clamped;
+    io.emit('sensor_update', {
+      data: { ...sensorData },
+      timestamp: new Date().toISOString(),
+      sent: totalSent,
+      mqttConnected
+    });
   });
 
   // Preset selection
@@ -263,22 +304,26 @@ io.on('connection', (socket) => {
 
   // Auto mode toggle
   socket.on('set_auto', (enabled) => {
-    config.autoMode = enabled;
-    if (enabled) startAutoMode();
+    config.autoMode = !!enabled;
+    if (config.autoMode) startAutoMode();
     else stopAutoMode();
     io.emit('config_update', config);
   });
 
-  // Interval change
+  // Interval change — with bounds
   socket.on('set_interval', (sec) => {
-    config.intervalSec = Math.max(1, Math.min(300, parseInt(sec)));
+    const val = parseInt(sec);
+    if (!Number.isFinite(val)) return;
+    config.intervalSec = Math.max(1, Math.min(300, val));
     if (config.autoMode) startAutoMode();
     io.emit('config_update', config);
   });
 
-  // Variation change
+  // Variation change — with bounds
   socket.on('set_variation', (v) => {
-    config.variation = Math.max(0, Math.min(20, parseFloat(v)));
+    const val = parseFloat(v);
+    if (!Number.isFinite(val)) return;
+    config.variation = Math.max(0, Math.min(20, val));
     io.emit('config_update', config);
   });
 
@@ -304,12 +349,57 @@ app.get('/api/status', (req, res) => {
 app.post('/api/publish', (req, res) => {
   const body = req.body || {};
   Object.keys(body).forEach(k => {
-    if (sensorData.hasOwnProperty(k)) sensorData[k] = parseFloat(body[k]);
+    if (sensorData.hasOwnProperty(k)) {
+      const clamped = clampSensorValue(k, body[k]);
+      if (clamped !== null) sensorData[k] = clamped;
+    }
   });
   applyVariation();
   checkEvents();
   publishSensorData();
   res.json({ ok: true, sent: totalSent, data: sensorData });
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    mqtt: mqttConnected,
+    totalSent,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// ─── Graceful Shutdown ────────────────────────────────
+function gracefulShutdown(signal) {
+  console.log(`\n[${signal}] Shutting down gracefully...`);
+
+  stopAutoMode();
+
+  if (mqttClient) {
+    mqttClient.end(true);
+  }
+
+  server.close(() => {
+    console.log('[Shutdown] HTTP server closed');
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.error('[Shutdown] Forced exit after timeout');
+    process.exit(1);
+  }, 5000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught exception:', err);
+  gracefulShutdown('uncaughtException');
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[WARN] Unhandled rejection:', reason);
 });
 
 // ─── Start ────────────────────────────────────────────

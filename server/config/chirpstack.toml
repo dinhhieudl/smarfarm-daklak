@@ -66,8 +66,8 @@
 [api]
   # Enable REST API
   bind = "0.0.0.0:8080"
-  # JWT secret (change in production!)
-  secret = "smarfarm-daklak-jwt-secret-2026"
+  # JWT secret (override via CHIRPSTACK_JWT_SECRET env var)
+  secret = "${CHIRPSTACK_JWT_SECRET:-smarfarm-daklak-jwt-secret-2026}"
 
 # ── Monitoring ──
 [monitoring]
