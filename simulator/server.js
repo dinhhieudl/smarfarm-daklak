@@ -37,10 +37,6 @@ const MAX_HISTORY = 120;
 const ZONE_SENSORS = [
   { devEUI: 'aabbccdd11223344', zoneId: 'zone-A', name: 'Khu A', crop: 'robusta', soilType: 'bazan-red',
     offsets: { temperature: 0, moisture: 0, ec: 0, ph: 0, nitrogen: 0, phosphorus: 0, potassium: 0 } },
-  { devEUI: 'aabbccdd11223345', zoneId: 'zone-B', name: 'Khu B', crop: 'robusta', soilType: 'bazan-red',
-    offsets: { temperature: -0.5, moisture: 3, ec: -20, ph: 0.1, nitrogen: -5, phosphorus: 2, potassium: -10 } },
-  { devEUI: 'aabbccdd11223346', zoneId: 'zone-C', name: 'Khu C', crop: 'arabica', soilType: 'bazan-yellow',
-    offsets: { temperature: -1.0, moisture: 5, ec: 30, ph: -0.2, nitrogen: 10, phosphorus: 5, potassium: 15 } }
 ];
 
 // ─── Simulation State ─────────────────────────────────

@@ -10,29 +10,5 @@
     "valveId": "valve-1",
     "moistureSensor": "aabbccdd11223344",
     "location": { "lat": 12.75, "lng": 108.35 }
-  },
-  {
-    "id": "zone-B",
-    "name": "Khu B — Cà phê Robusta",
-    "area": 3500,
-    "crop": "robusta",
-    "plantDate": "2023-06-01",
-    "soilType": "bazan-red",
-    "pumpId": "pump-1",
-    "valveId": "valve-2",
-    "moistureSensor": "aabbccdd11223345",
-    "location": { "lat": 12.76, "lng": 108.36 }
-  },
-  {
-    "id": "zone-C",
-    "name": "Khu C — Cà phê Arabica",
-    "area": 2000,
-    "crop": "arabica",
-    "plantDate": "2025-01-10",
-    "soilType": "bazan-yellow",
-    "pumpId": "pump-2",
-    "valveId": "valve-3",
-    "moistureSensor": "aabbccdd11223346",
-    "location": { "lat": 12.74, "lng": 108.34 }
   }
 ]

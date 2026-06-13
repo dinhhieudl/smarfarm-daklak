@@ -1,7 +1,4 @@
 {
   "pump-1": { "id": "pump-1", "name": "Bơm chính #1", "type": "pump", "state": "off", "autoMode": false, "lastChange": null, "flowRate": 50 },
-  "pump-2": { "id": "pump-2", "name": "Bơm chính #2", "type": "pump", "state": "off", "autoMode": false, "lastChange": null, "flowRate": 30 },
-  "valve-1": { "id": "valve-1", "name": "Van khu A", "type": "valve", "state": "closed", "autoMode": false, "lastChange": null, "zone": "zone-A" },
-  "valve-2": { "id": "valve-2", "name": "Van khu B", "type": "valve", "state": "closed", "autoMode": false, "lastChange": null, "zone": "zone-B" },
-  "valve-3": { "id": "valve-3", "name": "Van khu C", "type": "valve", "state": "closed", "autoMode": false, "lastChange": null, "zone": "zone-C" }
+  "valve-1": { "id": "valve-1", "name": "Van khu A", "type": "valve", "state": "closed", "autoMode": false, "lastChange": null, "zone": "zone-A" }
 }
