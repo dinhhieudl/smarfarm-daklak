@@ -8,7 +8,7 @@
 | Phase 1: Auth + Persistence + Config | ✅ DONE | Backend Engineer | JWT auth, InfluxDB, externalized config |
 | Phase 2: Weather API + Alerts + Audit | ✅ DONE | Fullstack Engineer | Open-Meteo, audit trail, alert system |
 | Phase 3: Frontend Refactor | ✅ DONE | Frontend Engineer | Modular responsive dashboard, login UI, theme toggle |
-| Phase 4: Testing + CI/CD | 🔄 IN PROGRESS | DevOps Engineer | Jest, ESLint, GitHub Actions |
-| Phase 5: Predictive Irrigation | ⏳ QUEUED | ML/Data Engineer | ET₀ integration, scheduling |
+| Phase 4: Testing + CI/CD | ✅ DONE | DevOps Engineer | 62 tests, ESLint, Prettier, GitHub Actions CI |
+| Phase 5: Predictive Irrigation | 🔄 IN PROGRESS | Backend Engineer | ET₀ integration, scheduling, data export |
 
 ---

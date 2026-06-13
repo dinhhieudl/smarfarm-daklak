@@ -12,6 +12,11 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const influx = require('./lib/influx');
+const { PredictiveIrrigation } = require('./lib/predictive-irrigation');
+const { getWeather, refreshWeather, getCachedWeather } = require('./lib/weather');
+const scheduler = require('./lib/scheduler');
+const auditModule = require('./lib/audit');
+const alertsModule = require('./lib/alerts');
 
 const app = express();
 const server = http.createServer(app);
@@ -68,6 +73,13 @@ const irrigationRules = loadJSON('config/irrigation-rules.json', {
   'zone-A': { enabled: true, moistureMin: 35, moistureMax: 65, maxDurationMin: 30, cooldownMin: 120, rainPause: true, rainThreshold: 5, lastIrrigation: null },
   'zone-B': { enabled: true, moistureMin: 35, moistureMax: 65, maxDurationMin: 25, cooldownMin: 120, rainPause: true, rainThreshold: 5, lastIrrigation: null },
   'zone-C': { enabled: true, moistureMin: 40, moistureMax: 70, maxDurationMin: 20, cooldownMin: 90, rainPause: true, rainThreshold: 5, lastIrrigation: null }
+});
+
+// ─── Predictive Irrigation Engine ─────────────────────
+const predictiveIrrigation = new PredictiveIrrigation({
+  zones: ZONES,
+  rules: irrigationRules,
+  altitude: 500 // DakLak elevation
 });
 
 // ─── Default Users (hardcoded, bcrypt-hashed) ─────────
@@ -539,6 +551,20 @@ function connectMQTT() {
 
           // Write sensor data to InfluxDB
           influx.writeSensorData(zone.id, payload.object);
+
+          // Update predictive irrigation water balance
+          try {
+            const currentWeather = weatherData;
+            const stageId = predictiveIrrigation.getCurrentStage(zone.crop);
+            const predResult = predictiveIrrigation.processSensorData(
+              zone.id, payload.object, currentWeather, zone.crop, stageId
+            );
+            if (predResult) {
+              io.emit('predictive_update', { zoneId: zone.id, ...predResult });
+            }
+          } catch (e) {
+            // Non-critical: log and continue
+          }
         }
       }
     } catch (e) {
@@ -563,11 +589,22 @@ function connectMQTT() {
   });
 }
 
-// ─── Weather Fetch (Simulated for DakLak) ─────────────
-function updateWeather() {
+// ─── Weather Fetch (Open-Meteo API with simulated fallback) ──
+async function updateWeather() {
+  try {
+    const data = await getWeather();
+    if (data) {
+      weatherData = data;
+      io.emit('weather_update', weatherData);
+      return;
+    }
+  } catch (err) {
+    console.warn('[Weather] Real API failed, using simulated:', err.message);
+  }
+
+  // Fallback to simulated
   const month = new Date().getMonth() + 1;
   const isRainy = month >= 5 && month <= 10;
-
   weatherData = {
     temperature: isRainy ? 25 + Math.random() * 5 : 28 + Math.random() * 8,
     humidity: isRainy ? 75 + Math.random() * 20 : 50 + Math.random() * 20,
@@ -582,7 +619,6 @@ function updateWeather() {
     lastUpdate: new Date().toISOString(),
     source: 'simulated'
   };
-
   io.emit('weather_update', weatherData);
 }
 
@@ -733,9 +769,301 @@ app.get('/api/history', async (req, res) => {
 });
 
 app.get('/api/auth/me', (req, res) => {
-  // User info from JWT (already authenticated by middleware)
   res.json({ username: req.user.username, role: req.user.role });
 });
+
+// ─── Predictive Irrigation API ────────────────────────
+
+// Get irrigation recommendation for a zone
+app.get('/api/predictive/:zoneId', (req, res) => {
+  const zoneId = req.params.zoneId;
+  if (typeof zoneId !== 'string' || zoneId.length > 50) {
+    return res.status(400).json({ error: 'Invalid zoneId', code: 'INVALID_INPUT' });
+  }
+  const zone = ZONES.find(z => z.id === zoneId);
+  if (!zone) return res.status(404).json({ error: 'Zone not found', code: 'NOT_FOUND' });
+
+  const sensor = zoneSensorData[zoneId];
+  if (!sensor) return res.status(404).json({ error: 'No sensor data for zone', code: 'NO_DATA' });
+
+  const stageId = predictiveIrrigation.getCurrentStage(zone.crop);
+  const recommendation = predictiveIrrigation.getRecommendation(zoneId, sensor, weatherData, zone.crop, stageId);
+  res.json(recommendation);
+});
+
+// Get recommendations for all zones
+app.get('/api/predictive', (req, res) => {
+  const stageId = (crop) => predictiveIrrigation.getCurrentStage(crop);
+  const recommendations = ZONES.map(zone => {
+    const sensor = zoneSensorData[zone.id];
+    if (!sensor) return null;
+    return predictiveIrrigation.getRecommendation(zone.id, sensor, weatherData, zone.crop, stageId(zone.crop));
+  }).filter(Boolean);
+  res.json(recommendations);
+});
+
+// Get water balance state for a zone
+app.get('/api/predictive/:zoneId/balance', (req, res) => {
+  const zoneId = req.params.zoneId;
+  if (typeof zoneId !== 'string' || zoneId.length > 50) {
+    return res.status(400).json({ error: 'Invalid zoneId', code: 'INVALID_INPUT' });
+  }
+  const state = predictiveIrrigation.getBalanceState(zoneId);
+  if (!state) return res.status(404).json({ error: 'Zone not found', code: 'NOT_FOUND' });
+  res.json(state);
+});
+
+// Get water balance history for a zone
+app.get('/api/predictive/:zoneId/history', (req, res) => {
+  const zoneId = req.params.zoneId;
+  if (typeof zoneId !== 'string' || zoneId.length > 50) {
+    return res.status(400).json({ error: 'Invalid zoneId', code: 'INVALID_INPUT' });
+  }
+  const hours = Math.min(parseInt(req.query.hours) || 24, 168);
+  const history = predictiveIrrigation.getBalanceHistory(zoneId, hours);
+  res.json(history);
+});
+
+// Refresh weather from Open-Meteo API
+app.post('/api/weather/refresh', authorize('admin', 'operator'), async (req, res) => {
+  try {
+    const data = await refreshWeather();
+    if (data) {
+      weatherData = data;
+      io.emit('weather_update', weatherData);
+      res.json({ success: true, source: data.source });
+    } else {
+      res.json({ success: false, message: 'Weather API unavailable, using cached data' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to refresh weather', code: 'WEATHER_ERROR' });
+  }
+});
+
+// ─── Phase 5: ET₀-based Irrigation Plan ───────────────
+app.get('/api/irrigation-plan/:zoneId', (req, res) => {
+  const zoneId = req.params.zoneId;
+  if (typeof zoneId !== 'string' || zoneId.length > 50) {
+    return res.status(400).json({ error: 'Invalid zoneId', code: 'INVALID_INPUT' });
+  }
+
+  const zone = ZONES.find(z => z.id === zoneId);
+  if (!zone) return res.status(404).json({ error: 'Zone not found', code: 'NOT_FOUND' });
+
+  const sensor = zoneSensorData[zoneId] || {};
+  const stage = getCurrentStage(zone.crop);
+  const stageId = stage ? stage.id : 'dormant';
+
+  const recommendation = predictiveIrrigation.getRecommendation(zoneId, sensor, weatherData, zone.crop, stageId);
+  res.json(recommendation);
+});
+
+// ─── Phase 5: Multi-zone Schedule ─────────────────────
+app.get('/api/schedule', (req, res) => {
+  const schedule = scheduler.generateSchedule(
+    ZONES, zoneSensorData, irrigationRules, weatherData
+  );
+  res.json(schedule);
+});
+
+app.get('/api/schedule/history', (req, res) => {
+  const days = Math.min(parseInt(req.query.days) || 7, 30);
+  const history = scheduler.getScheduleHistory(days);
+  res.json(history);
+});
+
+// ─── Phase 5: Data Export ─────────────────────────────
+function jsonToCsv(rows, columns) {
+  if (!rows || rows.length === 0) return columns.join(',') + '\n';
+  const header = columns.join(',');
+  const lines = rows.map(row =>
+    columns.map(col => {
+      const val = row[col];
+      if (val == null) return '';
+      if (typeof val === 'string' && (val.includes(',') || val.includes('"') || val.includes('\n'))) {
+        return '"' + val.replace(/"/g, '""') + '"';
+      }
+      return String(val);
+    }).join(',')
+  );
+  return header + '\n' + lines.join('\n') + '\n';
+}
+
+app.get('/api/export/sensors', async (req, res) => {
+  const format = (req.query.format || 'json').toLowerCase();
+  const from = req.query.from;
+  const to = req.query.to;
+
+  let data = [];
+
+  // Try InfluxDB first
+  if (influx.isAvailable()) {
+    try {
+      const hours = 24;
+      for (const zone of ZONES) {
+        const history = await influx.queryHistory(zone.id, hours);
+        data.push(...history.map(h => ({ zoneId: zone.id, ...h })));
+      }
+    } catch (err) {
+      console.warn('[Export] InfluxDB query failed, falling back to in-memory:', err.message);
+    }
+  }
+
+  // Fallback: in-memory sensor data snapshot
+  if (data.length === 0) {
+    for (const zone of ZONES) {
+      const sensor = zoneSensorData[zone.id];
+      if (sensor) {
+        data.push({
+          timestamp: sensor.lastUpdate || new Date().toISOString(),
+          zoneId: zone.id,
+          temperature: sensor.temperature,
+          moisture: sensor.moisture,
+          ec: sensor.ec,
+          salinity: sensor.salinity,
+          nitrogen: sensor.nitrogen,
+          phosphorus: sensor.phosphorus,
+          potassium: sensor.potassium,
+          ph: sensor.ph
+        });
+      }
+    }
+  }
+
+  // Filter by date range
+  if (from) {
+    const fromDate = new Date(from);
+    if (!isNaN(fromDate.getTime())) {
+      data = data.filter(d => new Date(d.timestamp || d.time) >= fromDate);
+    }
+  }
+  if (to) {
+    const toDate = new Date(to);
+    if (!isNaN(toDate.getTime())) {
+      data = data.filter(d => new Date(d.timestamp || d.time) <= toDate);
+    }
+  }
+
+  // Sort by time
+  data.sort((a, b) => new Date(a.timestamp || a.time) - new Date(b.timestamp || b.time));
+
+  if (format === 'csv') {
+    const columns = ['timestamp', 'zoneId', 'temperature', 'moisture', 'ec', 'salinity', 'nitrogen', 'phosphorus', 'potassium', 'ph'];
+    // Normalize timestamp field
+    const normalized = data.map(d => ({
+      timestamp: d.timestamp || d.time,
+      zoneId: d.zoneId,
+      temperature: d.temperature,
+      moisture: d.moisture,
+      ec: d.ec,
+      salinity: d.salinity,
+      nitrogen: d.nitrogen || d.nitrogen,
+      phosphorus: d.phosphorus,
+      potassium: d.potassium,
+      ph: d.ph
+    }));
+    const csv = jsonToCsv(normalized, columns);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="sensors-export-${new Date().toISOString().split('T')[0]}.csv"`);
+    return res.send(csv);
+  }
+
+  res.json(data);
+});
+
+app.get('/api/export/audit', (req, res) => {
+  const format = (req.query.format || 'json').toLowerCase();
+  const from = req.query.from;
+  const to = req.query.to;
+  const limit = Math.min(parseInt(req.query.limit) || 1000, 5000);
+
+  const entries = auditModule.getEntries({ from, to, limit });
+
+  if (format === 'csv') {
+    const columns = ['id', 'timestamp', 'userId', 'action', 'actuatorId', 'source', 'previousState', 'newState', 'detail'];
+    const csv = jsonToCsv(entries, columns);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="audit-export-${new Date().toISOString().split('T')[0]}.csv"`);
+    return res.send(csv);
+  }
+
+  res.json(entries);
+});
+
+// ─── Phase 5: System Health Dashboard ─────────────────
+app.get('/api/system', (req, res) => {
+  const memUsage = process.memoryUsage();
+  const cpuUsage = process.cpuUsage();
+
+  // Last irrigation times per zone
+  const lastIrrigations = {};
+  ZONES.forEach(zone => {
+    const rule = irrigationRules[zone.id];
+    lastIrrigations[zone.id] = rule.lastIrrigation ? new Date(rule.lastIrrigation).toISOString() : null;
+  });
+
+  // Active alerts count
+  const alertSummary = alertsModule.getSummary();
+
+  // Weather module status
+  const cachedWeather = getCachedWeather();
+
+  res.json({
+    uptime: {
+      seconds: Math.floor(process.uptime()),
+      formatted: formatUptime(process.uptime())
+    },
+    memory: {
+      rss: formatBytes(memUsage.rss),
+      heapUsed: formatBytes(memUsage.heapUsed),
+      heapTotal: formatBytes(memUsage.heapTotal),
+      external: formatBytes(memUsage.external)
+    },
+    cpu: {
+      user: cpuUsage.user,
+      system: cpuUsage.system
+    },
+    mqtt: {
+      connected: mqttConnected,
+      lastMessageTime: null // tracked internally, not exposed separately
+    },
+    influxdb: {
+      connected: influx.isAvailable()
+    },
+    zones: {
+      active: ZONES.length,
+      lastIrrigations
+    },
+    alerts: alertSummary,
+    weather: {
+      lastUpdate: cachedWeather ? cachedWeather.lastUpdate : null,
+      source: cachedWeather ? cachedWeather.source : 'none',
+      status: cachedWeather ? 'ok' : 'no-data'
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
+function formatUptime(seconds) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const parts = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  parts.push(`${s}s`);
+  return parts.join(' ');
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 // Health check endpoint (no auth required)
 app.get('/api/health', (req, res) => {
@@ -786,4 +1114,5 @@ server.listen(PORT, () => {
   connectMQTT();
   updateWeather();
   influx.init();
+  auditModule.init();
 });
