@@ -150,7 +150,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // ─── Sensor Data Cache (per zone) ─────────────────────
-let zoneSensorData = {};
+const zoneSensorData = {};
 ZONES.forEach(z => {
   zoneSensorData[z.id] = {
     temperature: 27.5, moisture: 55, ec: 450, salinity: 220,
@@ -166,11 +166,11 @@ let weatherData = {
 };
 
 // ─── Control & Advisory History ───────────────────────
-let controlHistory = [];
-let advisoryHistory = [];
+const controlHistory = [];
+const advisoryHistory = [];
 
 // ─── Track active irrigation timers for cleanup ───────
-let activeIrrigationTimers = new Map();
+const activeIrrigationTimers = new Map();
 
 // ─── Crop Knowledge Base (DakLak Coffee) ──────────────
 const CROP_STAGES = {

@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "jest --verbose"
   },
   "dependencies": {
     "@influxdata/influxdb-client": "^1.35.0",
@@ -15,5 +16,8 @@
     "mqtt": "^5.3.4",
     "node-cron": "^3.0.3",
     "socket.io": "^4.7.4"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
   }
 }

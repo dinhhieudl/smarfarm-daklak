@@ -1,693 +1,123 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🎛️ SmartFarm DakLak — Điều khiển thông minh</title>
-<style>
-/* ─── Reset & Variables ──────────────────────────────── */
-*{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#0a0f0a;--bg2:#111a11;--bg3:#162016;--bg4:#1c2a1c;
-  --green:#4caf50;--green2:#2e7d32;--green-dim:#1b5e20;
-  --brown:#8d6e63;--gold:#f9a825;--orange:#ef6c00;--red:#e53935;
-  --cyan:#00bcd4;--blue:#42a5f5;--purple:#ab47bc;
-  --text:#e0e0e0;--text2:#a5d6a7;--text3:#66bb6a;
-  --border:#2e3b2e;--radius:12px;
-  --pump-on:#00e676;--pump-off:#616161;
-  --valve-open:#00e676;--valve-closed:#616161;
-}
-html{font-size:13px}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:var(--bg2)}
-::-webkit-scrollbar-thumb{background:var(--green-dim);border-radius:3px}
-
-/* ─── Header ─────────────────────────────────────────── */
-.header{
-  background:linear-gradient(135deg,var(--bg3) 0%,var(--bg4) 100%);
-  border-bottom:1px solid var(--border);
-  padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px
-}
-.header-left{display:flex;align-items:center;gap:16px}
-.header-left h1{font-size:1.4rem;font-weight:700;color:var(--green)}
-.header-left h1 span{color:var(--brown)}
-.header-left .subtitle{font-size:.8rem;color:var(--text2)}
-.status-pills{display:flex;gap:8px;flex-wrap:wrap}
-.pill{padding:4px 12px;border-radius:20px;font-size:.7rem;font-weight:600;display:flex;align-items:center;gap:5px}
-.pill .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
-.pill.ok{background:#1b5e2040;color:var(--green);border:1px solid #2e7d3260}
-.pill.ok .dot{background:var(--green);box-shadow:0 0 6px var(--green)}
-.pill.err{background:#b71c1c30;color:var(--red);border:1px solid #e5393560}
-.pill.err .dot{background:var(--red);box-shadow:0 0 6px var(--red)}
-
-/* ─── Tabs ───────────────────────────────────────────── */
-.tabs{
-  display:flex;background:var(--bg2);border-bottom:1px solid var(--border);
-  padding:0 24px;gap:0
-}
-.tab-btn{
-  padding:10px 20px;background:transparent;border:none;color:var(--text3);
-  font-size:.85rem;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;
-  transition:all .2s
-}
-.tab-btn:hover{color:var(--text);background:var(--bg3)}
-.tab-btn.active{color:var(--green);border-bottom-color:var(--green)}
-.tab-content{display:none}
-.tab-content.active{display:block}
-
-/* ─── Grid Layout ────────────────────────────────────── */
-.grid{display:grid;gap:16px;padding:20px}
-.grid-3{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
-
-/* ─── Cards ──────────────────────────────────────────── */
-.card{
-  background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
-  padding:16px;transition:border-color .3s
-}
-.card:hover{border-color:var(--green2)}
-.card-title{font-size:1rem;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
-.card-title .icon{font-size:1.2rem}
-
-/* ─── Zone Card ──────────────────────────────────────── */
-.zone-card{position:relative;overflow:hidden}
-.zone-card .zone-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.zone-card .zone-name{font-size:1.05rem;font-weight:700;color:var(--green)}
-.zone-card .zone-badge{
-  padding:3px 10px;border-radius:12px;font-size:.65rem;font-weight:700;
-  background:var(--green-dim);color:var(--green);border:1px solid var(--green2)
-}
-.zone-card .zone-meta{font-size:.75rem;color:var(--text3);margin-bottom:10px}
-
-/* Sensor Mini Gauges */
-.sensor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
-.sensor-item{
-  background:var(--bg);border:1px solid var(--border);border-radius:8px;
-  padding:8px;text-align:center
-}
-.sensor-item .s-label{font-size:.6rem;color:var(--text3);margin-bottom:2px}
-.sensor-item .s-value{font-size:1rem;font-weight:700}
-.sensor-item .s-unit{font-size:.55rem;color:var(--text3)}
-
-/* Color coding */
-.s-temp{color:var(--orange)}
-.s-moist{color:var(--blue)}
-.s-ec{color:var(--gold)}
-.s-ph{color:var(--cyan)}
-.s-n{color:var(--green)}
-.s-p{color:var(--purple)}
-.s-k{color:var(--red)}
-
-/* ─── Actuator Control ───────────────────────────────── */
-.actuator-row{
-  display:flex;align-items:center;justify-content:space-between;
-  background:var(--bg);border:1px solid var(--border);border-radius:8px;
-  padding:10px 12px;margin-bottom:8px
-}
-.actuator-info{display:flex;align-items:center;gap:10px}
-.actuator-icon{font-size:1.3rem}
-.actuator-name{font-size:.85rem;font-weight:600}
-.actuator-status{font-size:.7rem;color:var(--text3)}
-
-.actuator-btn{
-  padding:6px 16px;border-radius:6px;border:2px solid;font-weight:700;
-  font-size:.75rem;cursor:pointer;transition:all .2s;min-width:70px;text-align:center
-}
-.btn-on{
-  background:transparent;border-color:var(--pump-on);color:var(--pump-on)
-}
-.btn-on:hover{background:var(--pump-on);color:var(--bg)}
-.btn-off{
-  background:transparent;border-color:var(--pump-off);color:var(--pump-off)
-}
-.btn-off:hover{background:var(--pump-off);color:#fff}
-
-.pump-on{color:var(--pump-on);text-shadow:0 0 8px var(--pump-on)}
-.valve-open{color:var(--valve-open);text-shadow:0 0 8px var(--valve-open)}
-
-/* ─── Advisory Card ──────────────────────────────────── */
-.advisory-card{border-left:4px solid var(--green)}
-.advisory-card.warning{border-left-color:var(--gold)}
-.advisory-card.critical{border-left-color:var(--red)}
-
-.advisory-item{
-  padding:8px 0;border-bottom:1px solid var(--border);
-  display:flex;gap:10px;align-items:flex-start
-}
-.advisory-item:last-child{border:none}
-.advisory-icon{font-size:1.1rem;min-width:24px;text-align:center}
-.advisory-text{flex:1}
-.advisory-msg{font-size:.8rem;margin-bottom:3px}
-.advisory-action{font-size:.7rem;color:var(--text3);font-style:italic}
-
-/* ─── Irrigation Rule Editor ─────────────────────────── */
-.rule-form{display:flex;flex-direction:column;gap:10px}
-.rule-row{display:flex;align-items:center;gap:10px}
-.rule-row label{font-size:.8rem;min-width:120px;color:var(--text2)}
-.rule-row input[type=number]{
-  background:var(--bg);border:1px solid var(--border);border-radius:6px;
-  padding:5px 8px;color:var(--text);width:80px;font-size:.8rem;text-align:center
-}
-.rule-row input[type=number]:focus{outline:none;border-color:var(--green)}
-.rule-row .unit{font-size:.7rem;color:var(--text3)}
-
-.toggle{
-  position:relative;width:44px;height:24px;cursor:pointer;display:inline-block
-}
-.toggle input{opacity:0;width:0;height:0}
-.toggle .slider{
-  position:absolute;top:0;left:0;right:0;bottom:0;
-  background:var(--bg);border-radius:12px;transition:.3s;border:1px solid var(--border)
-}
-.toggle .slider:before{
-  content:'';position:absolute;height:18px;width:18px;left:2px;bottom:2px;
-  background:var(--text3);border-radius:50%;transition:.3s
-}
-.toggle input:checked+.slider{background:var(--green2);border-color:var(--green)}
-.toggle input:checked+.slider:before{transform:translateX(20px);background:#fff}
-
-.save-btn{
-  padding:8px 20px;border:2px solid var(--green);border-radius:8px;
-  background:transparent;color:var(--green);font-weight:700;font-size:.8rem;
-  cursor:pointer;transition:all .2s;align-self:flex-start
-}
-.save-btn:hover{background:var(--green);color:var(--bg)}
-
-/* ─── Weather Widget ─────────────────────────────────── */
-.weather-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
-.weather-item{
-  background:var(--bg);border:1px solid var(--border);border-radius:8px;
-  padding:10px;text-align:center
-}
-.weather-item .w-icon{font-size:1.5rem;margin-bottom:4px}
-.weather-item .w-value{font-size:1.2rem;font-weight:700}
-.weather-item .w-label{font-size:.65rem;color:var(--text3)}
-
-.forecast-row{
-  display:flex;justify-content:space-between;align-items:center;
-  padding:8px 0;border-bottom:1px solid var(--border);font-size:.8rem
-}
-.forecast-row:last-child{border:none}
-
-/* ─── Crop Stage Timeline ────────────────────────────── */
-.timeline{display:flex;gap:4px;margin:12px 0;position:relative}
-.timeline-stage{
-  flex:1;height:32px;border-radius:4px;display:flex;align-items:center;justify-content:center;
-  font-size:.55rem;font-weight:600;color:var(--bg);text-align:center;padding:2px;
-  opacity:.5;transition:all .3s;cursor:pointer;position:relative
-}
-.timeline-stage.active{opacity:1;transform:scaleY(1.2);box-shadow:0 0 12px rgba(76,175,80,.3)}
-.timeline-stage:hover{opacity:.8}
-
-.stage-detail{margin-top:10px}
-.stage-detail h4{color:var(--green);font-size:.9rem;margin-bottom:6px}
-.stage-detail p{font-size:.8rem;color:var(--text2);margin-bottom:6px}
-.stage-detail .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.detail-box{
-  background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px
-}
-.detail-box .d-label{font-size:.65rem;color:var(--text3);margin-bottom:4px}
-.detail-box .d-value{font-size:.85rem;font-weight:600}
-
-/* ─── History Log ────────────────────────────────────── */
-.history-log{
-  max-height:300px;overflow-y:auto;font-size:.75rem
-}
-.history-item{
-  padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:baseline
-}
-.history-item:last-child{border:none}
-.history-time{color:var(--text3);font-size:.65rem;min-width:70px;white-space:nowrap}
-.history-msg{flex:1}
-
-/* ─── Empty State ────────────────────────────────────── */
-.empty{text-align:center;padding:40px;color:var(--text3);font-size:.85rem}
-
-/* ─── Responsive ─────────────────────────────────────── */
-@media(max-width:800px){
-  .grid-3{grid-template-columns:1fr}
-  .sensor-grid{grid-template-columns:repeat(2,1fr)}
-  .tabs{overflow-x:auto}
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎛️ SmartFarm DakLak — Điều khiển thông minh</title>
+  <link rel="stylesheet" href="/css/main.css">
 </head>
 <body>
 
-<!-- Header -->
-<div class="header">
-  <div class="header-left">
-    <h1>🎛️ SmartFarm <span>DakLak</span></h1>
-    <div class="subtitle">Hệ thống điều khiển thông minh</div>
-  </div>
-  <div class="status-pills">
-    <div class="pill" id="pill-mqtt"><span class="dot"></span>MQTT</div>
-    <div class="pill ok"><span class="dot"></span>Control Service</div>
-    <div class="pill ok" id="pill-weather"><span class="dot"></span>Weather</div>
-  </div>
-</div>
-
-<!-- Tabs -->
-<div class="tabs">
-  <button class="tab-btn active" data-tab="tab-dashboard">📊 Dashboard</button>
-  <button class="tab-btn" data-tab="tab-control">🎛️ Điều khiển</button>
-  <button class="tab-btn" data-tab="tab-advisory">🧠 Tư vấn</button>
-  <button class="tab-btn" data-tab="tab-rules">⚙️ Quy tắc tưới</button>
-  <button class="tab-btn" data-tab="tab-history">📋 Nhật ký</button>
-</div>
-
-<!-- Tab: Dashboard -->
-<div class="tab-content active" id="tab-dashboard">
-  <div class="grid grid-3" id="zone-cards"></div>
-</div>
-
-<!-- Tab: Control -->
-<div class="tab-content" id="tab-control">
-  <div class="grid grid-3" id="control-panel"></div>
-</div>
-
-<!-- Tab: Advisory -->
-<div class="tab-content" id="tab-advisory">
-  <div class="grid grid-3">
-    <div class="card" style="grid-column:1/-1">
-      <div class="card-title"><span class="icon">🌤️</span> Thời tiết DakLak</div>
-      <div class="weather-grid" id="weather-grid"></div>
-      <div style="margin-top:12px">
-        <div class="card-title" style="font-size:.85rem"><span class="icon">📅</span> Dự báo 3 ngày</div>
-        <div id="forecast-list"></div>
-      </div>
+  <!-- ═══ Login Overlay ═══ -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-box">
+      <h2>🌿 SmartFarm DakLak</h2>
+      <p class="login-subtitle">Đăng nhập để truy cập hệ thống</p>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-username">Tên đăng nhập</label>
+          <input type="text" id="login-username" placeholder="username" autocomplete="username" required>
+        </div>
+        <div class="form-group">
+          <label for="login-password">Mật khẩu</label>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
+        </div>
+        <button type="submit" id="login-btn" class="login-btn">Đăng nhập</button>
+        <div id="login-error" class="login-error"></div>
+      </form>
     </div>
   </div>
-  <div class="grid grid-3" id="advisory-cards"></div>
-</div>
 
-<!-- Tab: Rules -->
-<div class="tab-content" id="tab-rules">
-  <div class="grid grid-3" id="rule-cards"></div>
-</div>
+  <!-- ═══ Main Application ═══ -->
+  <div id="main-app" style="display:none">
 
-<!-- Tab: History -->
-<div class="tab-content" id="tab-history">
-  <div class="grid" style="grid-template-columns:1fr">
-    <div class="card">
-      <div class="card-title"><span class="icon">📋</span> Nhật ký điều khiển</div>
-      <div class="history-log" id="history-log">
-        <div class="empty">Chưa có sự kiện nào</div>
+    <!-- Header -->
+    <div class="header">
+      <div class="header-left">
+        <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle menu">☰</button>
+        <h1>🎛️ SmartFarm <span>DakLak</span></h1>
+        <div class="subtitle">Hệ thống điều khiển thông minh</div>
       </div>
+      <div class="header-right">
+        <div class="status-pills">
+          <div class="pill" id="pill-mqtt"><span class="dot"></span>MQTT</div>
+          <div class="pill ok" id="pill-ws"><span class="dot"></span>WebSocket</div>
+          <div class="pill ok"><span class="dot"></span>Control Service</div>
+          <div class="pill ok" id="pill-weather"><span class="dot"></span>Weather</div>
+        </div>
+        <button class="alert-badge" id="alert-badge" onclick="Alerts.clearAll()" title="Alerts">
+          🔔 <span class="badge-count hidden" id="alert-badge-count">0</span>
+        </button>
+        <button class="theme-toggle" id="theme-toggle" title="Toggle theme">🌙</button>
+        <div class="user-info" id="user-info"></div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-dashboard" data-role="viewer">📊 Dashboard</button>
+      <button class="tab-btn" data-tab="tab-control" data-role="operator">🎛️ Điều khiển</button>
+      <button class="tab-btn" data-tab="tab-advisory" data-role="viewer">🧠 Tư vấn</button>
+      <button class="tab-btn" data-tab="tab-rules" data-role="admin">⚙️ Quy tắc tưới</button>
+      <button class="tab-btn" data-tab="tab-history" data-role="viewer">📋 Nhật ký</button>
+    </div>
+
+    <!-- Tab: Dashboard -->
+    <div class="tab-content active" id="tab-dashboard">
+      <div class="grid grid-3" id="zone-cards"></div>
+    </div>
+
+    <!-- Tab: Control -->
+    <div class="tab-content" id="tab-control">
+      <div class="grid grid-3" id="control-panel"></div>
+    </div>
+
+    <!-- Tab: Advisory -->
+    <div class="tab-content" id="tab-advisory">
+      <div class="grid grid-3">
+        <div class="card" style="grid-column:1/-1">
+          <div class="card-title"><span class="icon">🌤️</span> Thời tiết DakLak</div>
+          <div class="weather-grid" id="weather-grid"></div>
+          <div style="margin-top:12px">
+            <div class="card-title" style="font-size:.85rem"><span class="icon">📅</span> Dự báo 3 ngày</div>
+            <div id="forecast-list"></div>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-3" id="advisory-cards"></div>
+    </div>
+
+    <!-- Tab: Rules -->
+    <div class="tab-content" id="tab-rules">
+      <div class="grid grid-3" id="rule-cards"></div>
+    </div>
+
+    <!-- Tab: History / Audit Log -->
+    <div class="tab-content" id="tab-history">
+      <div class="grid" style="grid-template-columns:1fr">
+        <div class="card">
+          <div class="card-title"><span class="icon">📋</span> Nhật ký điều khiển</div>
+          <div class="history-log" id="history-log">
+            <div class="empty">Chưa có sự kiện nào</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      SmartFarm DakLak — Smart Control & Advisory &bull; MQTT → ChirpStack → Control Service → Actuators
     </div>
   </div>
-</div>
 
-<div class="footer" style="text-align:center;padding:10px;font-size:.7rem;color:var(--text3);border-top:1px solid var(--border);background:var(--bg2)">
-  SmartFarm DakLak — Smart Control & Advisory &bull; MQTT → ChirpStack → Control Service → Actuators
-</div>
-
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const socket = io();
-
-// ─── State ────────────────────────────────────────────
-let state = {
-  zones: [],
-  actuators: {},
-  zoneSensorData: {},
-  irrigationRules: {},
-  weather: {},
-  cropStages: {},
-  controlHistory: [],
-  advisories: {}
-};
-
-// ─── Crop Stage Colors ────────────────────────────────
-const STAGE_COLORS = {
-  dormant: '#616161',
-  flowering: '#fff176',
-  'fruit-set': '#81c784',
-  'fruit-growth': '#4caf50',
-  ripening: '#e53935',
-  harvest: '#ff9800'
-};
-
-// ─── Tab Switching ────────────────────────────────────
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.tab).classList.add('active');
-  });
-});
-
-// ─── Socket Events ────────────────────────────────────
-socket.on('init', (data) => {
-  state = { ...state, ...data };
-  renderAll();
-});
-
-socket.on('zone_sensor', ({ zoneId, data }) => {
-  state.zoneSensorData[zoneId] = data;
-  renderZoneCards();
-  renderAdvisoryCards();
-});
-
-socket.on('actuator_update', (act) => {
-  state.actuators[act.id] = act;
-  renderControlPanel();
-});
-
-socket.on('weather_update', (w) => {
-  state.weather = w;
-  renderWeather();
-});
-
-socket.on('advisory', ({ zoneId, advices, urgency, stage }) => {
-  state.advisories[zoneId] = { advices, urgency, stage };
-  renderAdvisoryCards();
-});
-
-socket.on('rule_update', ({ zoneId, rule }) => {
-  state.irrigationRules[zoneId] = rule;
-  renderRuleCards();
-});
-
-socket.on('control_event', (evt) => {
-  state.controlHistory.unshift(evt);
-  if (state.controlHistory.length > 200) state.controlHistory.pop();
-  renderHistory();
-});
-
-socket.on('control_log', (evt) => {
-  state.controlHistory.unshift(evt);
-  if (state.controlHistory.length > 200) state.controlHistory.pop();
-  renderHistory();
-});
-
-socket.on('mqtt_status', (s) => {
-  const pill = document.getElementById('pill-mqtt');
-  pill.className = s.connected ? 'pill ok' : 'pill err';
-  pill.innerHTML = `<span class="dot"></span>MQTT ${s.connected ? 'Connected' : 'Disconnected'}`;
-});
-
-// ─── Render All ───────────────────────────────────────
-function renderAll() {
-  renderZoneCards();
-  renderControlPanel();
-  renderAdvisoryCards();
-  renderRuleCards();
-  renderWeather();
-  renderHistory();
-}
-
-// ─── Zone Cards (Dashboard) ───────────────────────────
-function renderZoneCards() {
-  const container = document.getElementById('zone-cards');
-  container.innerHTML = state.zones.map(zone => {
-    const sensor = state.zoneSensorData[zone.id] || {};
-    const stage = getCurrentStage(zone.crop);
-    const rule = state.irrigationRules[zone.id] || {};
-    const advisory = state.advisories[zone.id];
-    const urgencyClass = advisory ? advisory.urgency : 'info';
-
-    return `
-      <div class="card zone-card ${urgencyClass === 'critical' ? 'advisory-card critical' : urgencyClass === 'warning' ? 'advisory-card warning' : 'advisory-card'}">
-        <div class="zone-header">
-          <span class="zone-name">${zone.name}</span>
-          <span class="zone-badge">${stage ? stage.name : '--'}</span>
-        </div>
-        <div class="zone-meta">
-          ${zone.crop === 'robusta' ? '☕ Robusta' : '☕ Arabica'} · ${zone.area}m² · ${rule.enabled ? '🟢 Auto tưới' : '🔴 Thủ công'}
-        </div>
-        <div class="sensor-grid">
-          <div class="sensor-item">
-            <div class="s-label">💧 Độ ẩm</div>
-            <div class="s-value s-moist">${sensor.moisture != null ? sensor.moisture.toFixed(1) : '--'}</div>
-            <div class="s-unit">%VWC</div>
-          </div>
-          <div class="sensor-item">
-            <div class="s-label">🌡️ Nhiệt độ</div>
-            <div class="s-value s-temp">${sensor.temperature != null ? sensor.temperature.toFixed(1) : '--'}</div>
-            <div class="s-unit">°C</div>
-          </div>
-          <div class="sensor-item">
-            <div class="s-label">⚡ EC</div>
-            <div class="s-value s-ec">${sensor.ec != null ? Math.round(sensor.ec) : '--'}</div>
-            <div class="s-unit">µS/cm</div>
-          </div>
-          <div class="sensor-item">
-            <div class="s-label">🧪 pH</div>
-            <div class="s-value s-ph">${sensor.ph != null ? sensor.ph.toFixed(1) : '--'}</div>
-            <div class="s-unit">pH</div>
-          </div>
-        </div>
-        ${advisory && advisory.advices.length > 0 ? `
-          <div style="font-size:.75rem;padding:8px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
-            ${advisory.advices.slice(0, 2).map(a => `<div style="margin-bottom:3px">${a.icon} ${a.message}</div>`).join('')}
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }).join('');
-}
-
-// ─── Control Panel ────────────────────────────────────
-function renderControlPanel() {
-  const container = document.getElementById('control-panel');
-  const pumps = Object.values(state.actuators).filter(a => a.type === 'pump');
-  const valves = Object.values(state.actuators).filter(a => a.type === 'valve');
-
-  container.innerHTML = `
-    <div class="card">
-      <div class="card-title"><span class="icon">🔌</span> Bơm nước</div>
-      ${pumps.map(p => `
-        <div class="actuator-row">
-          <div class="actuator-info">
-            <span class="actuator-icon ${p.state === 'on' ? 'pump-on' : ''}">🔌</span>
-            <div>
-              <div class="actuator-name">${p.name}</div>
-              <div class="actuator-status">${p.state === 'on' ? '🟢 Đang chạy' : '🔴 Tắt'} · Lưu lượng: ${p.flowRate} L/phút</div>
-            </div>
-          </div>
-          <button class="actuator-btn ${p.state === 'on' ? 'btn-on' : 'btn-off'}"
-            onclick="toggleActuator('${p.id}', '${p.state === 'on' ? 'off' : 'on'}')">
-            ${p.state === 'on' ? 'TẮT' : 'BẬT'}
-          </button>
-        </div>
-      `).join('')}
-    </div>
-
-    <div class="card">
-      <div class="card-title"><span class="icon">🔧</span> Van tưới khu vực</div>
-      ${valves.map(v => `
-        <div class="actuator-row">
-          <div class="actuator-info">
-            <span class="actuator-icon ${v.state === 'open' ? 'valve-open' : ''}">🔧</span>
-            <div>
-              <div class="actuator-name">${v.name}</div>
-              <div class="actuator-status">${v.state === 'open' ? '🟢 Đang mở' : '🔴 Đóng'} · Khu: ${v.zone || '--'}</div>
-            </div>
-          </div>
-          <button class="actuator-btn ${v.state === 'open' ? 'btn-on' : 'btn-off'}"
-            onclick="toggleActuator('${v.id}', '${v.state === 'open' ? 'close' : 'open'}')">
-            ${v.state === 'open' ? 'ĐÓNG' : 'MỞ'}
-          </button>
-        </div>
-      `).join('')}
-    </div>
-
-    <div class="card">
-      <div class="card-title"><span class="icon">🚀</span> Tưới nhanh theo khu</div>
-      ${state.zones.map(z => `
-        <div class="actuator-row">
-          <div class="actuator-info">
-            <span class="actuator-icon">💧</span>
-            <div>
-              <div class="actuator-name">${z.name}</div>
-              <div class="actuator-status">Bật bơm + mở van khu vực</div>
-            </div>
-          </div>
-          <button class="actuator-btn btn-off" onclick="quickIrrigate('${z.id}')">TƯỚI NGAY</button>
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-// ─── Advisory Cards ───────────────────────────────────
-function renderAdvisoryCards() {
-  const container = document.getElementById('advisory-cards');
-  container.innerHTML = state.zones.map(zone => {
-    const advisory = state.advisories[zone.id];
-    if (!advisory) return '<div class="card"><div class="empty">Đang phân tích...</div></div>';
-
-    const stage = advisory.stage;
-    return `
-      <div class="card advisory-card ${advisory.urgency === 'critical' ? 'critical' : advisory.urgency === 'warning' ? 'warning' : ''}">
-        <div class="card-title">
-          <span class="icon">🧠</span> ${zone.name}
-        </div>
-
-        ${stage ? `
-          <div style="margin-bottom:12px">
-            <div style="font-size:.85rem;font-weight:600;color:var(--green);margin-bottom:4px">
-              🌱 Giai đoạn: ${stage.name}
-            </div>
-            <div style="font-size:.75rem;color:var(--text2)">${stage.description}</div>
-            ${renderTimeline(zone.crop, stage.id)}
-          </div>
-        ` : ''}
-
-        ${advisory.advices.map(a => `
-          <div class="advisory-item">
-            <span class="advisory-icon">${a.icon}</span>
-            <div class="advisory-text">
-              <div class="advisory-msg">${a.message}</div>
-              ${a.action ? `<div class="advisory-action">💡 ${a.action}</div>` : ''}
-              ${a.details ? `<div style="font-size:.7rem;color:var(--text3);margin-top:3px">${a.details.map(d => '• ' + d).join('<br>')}</div>` : ''}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }).join('');
-}
-
-function renderTimeline(crop, activeStageId) {
-  const stages = state.cropStages[crop]?.stages || [];
-  if (!stages.length) return '';
-
-  return `
-    <div class="timeline">
-      ${stages.map(s => `
-        <div class="timeline-stage ${s.id === activeStageId ? 'active' : ''}"
-          style="background:${STAGE_COLORS[s.id] || '#666'}"
-          title="${s.name} (${s.months.map(m => 'T' + m).join(', ')})">
-          ${s.name.split(' ')[0]}
-        </div>
-      `).join('')}
-    </div>
-  `;
-}
-
-// ─── Weather ──────────────────────────────────────────
-function renderWeather() {
-  const w = state.weather;
-  const grid = document.getElementById('weather-grid');
-  grid.innerHTML = `
-    <div class="weather-item"><div class="w-icon">🌡️</div><div class="w-value">${w.temperature?.toFixed(1) || '--'}°C</div><div class="w-label">Nhiệt độ</div></div>
-    <div class="weather-item"><div class="w-icon">💧</div><div class="w-value">${w.humidity?.toFixed(0) || '--'}%</div><div class="w-label">Độ ẩm</div></div>
-    <div class="weather-item"><div class="w-icon">🌧️</div><div class="w-value">${w.rainfall?.toFixed(1) || '0'} mm</div><div class="w-label">Mưa</div></div>
-    <div class="weather-item"><div class="w-icon">💨</div><div class="w-value">${w.windSpeed?.toFixed(0) || '--'} km/h</div><div class="w-label">Gió</div></div>
-    <div class="weather-item"><div class="w-icon">☁️</div><div class="w-value">${w.cloudCover?.toFixed(0) || '--'}%</div><div class="w-label">Mây</div></div>
-  `;
-
-  const forecast = document.getElementById('forecast-list');
-  forecast.innerHTML = (w.forecast || []).map(f => `
-    <div class="forecast-row">
-      <span>${f.day}</span>
-      <span>${f.desc}</span>
-      <span>🌡️ ${f.temp}°C</span>
-      <span>🌧️ ${f.rain}mm</span>
-    </div>
-  `).join('');
-}
-
-// ─── Rule Cards ───────────────────────────────────────
-function renderRuleCards() {
-  const container = document.getElementById('rule-cards');
-  container.innerHTML = state.zones.map(zone => {
-    const rule = state.irrigationRules[zone.id] || {};
-    return `
-      <div class="card">
-        <div class="card-title"><span class="icon">⚙️</span> ${zone.name}</div>
-        <div class="rule-form">
-          <div class="rule-row">
-            <label>Auto tưới</label>
-            <label class="toggle">
-              <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="toggleAuto('${zone.id}', this.checked)">
-              <span class="slider"></span>
-            </label>
-          </div>
-          <div class="rule-row">
-            <label>Độ ẩm tối thiểu</label>
-            <input type="number" id="r-min-${zone.id}" value="${rule.moistureMin || 35}" min="10" max="90">
-            <span class="unit">%VWC</span>
-          </div>
-          <div class="rule-row">
-            <label>Độ ẩm tối đa</label>
-            <input type="number" id="r-max-${zone.id}" value="${rule.moistureMax || 65}" min="20" max="95">
-            <span class="unit">%VWC</span>
-          </div>
-          <div class="rule-row">
-            <label>Thời gian tưới tối đa</label>
-            <input type="number" id="r-dur-${zone.id}" value="${rule.maxDurationMin || 30}" min="5" max="120">
-            <span class="unit">phút</span>
-          </div>
-          <div class="rule-row">
-            <label>Nghỉ giữa 2 lần tưới</label>
-            <input type="number" id="r-cd-${zone.id}" value="${rule.cooldownMin || 120}" min="30" max="720">
-            <span class="unit">phút</span>
-          </div>
-          <div class="rule-row">
-            <label>Dừng tưới khi mưa</label>
-            <label class="toggle">
-              <input type="checkbox" ${rule.rainPause ? 'checked' : ''} id="r-rain-${zone.id}">
-              <span class="slider"></span>
-            </label>
-          </div>
-          <button class="save-btn" onclick="saveRule('${zone.id}')">💾 Lưu quy tắc</button>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-// ─── History ──────────────────────────────────────────
-function renderHistory() {
-  const log = document.getElementById('history-log');
-  if (state.controlHistory.length === 0) {
-    log.innerHTML = '<div class="empty">Chưa có sự kiện nào</div>';
-    return;
-  }
-  log.innerHTML = state.controlHistory.slice(0, 100).map(evt => {
-    const time = new Date(evt.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    return `<div class="history-item"><span class="history-time">${time}</span><span class="history-msg">${evt.message || evt.type || JSON.stringify(evt)}</span></div>`;
-  }).join('');
-}
-
-// ─── Actions ──────────────────────────────────────────
-function toggleActuator(id, action) {
-  socket.emit('control', { actuatorId: id, action });
-}
-
-function quickIrrigate(zoneId) {
-  const zone = state.zones.find(z => z.id === zoneId);
-  if (!zone) return;
-  // Turn on pump and open valve
-  socket.emit('control', { actuatorId: zone.pumpId, action: 'on' });
-  setTimeout(() => {
-    socket.emit('control', { actuatorId: zone.valveId, action: 'open' });
-  }, 500);
-}
-
-function toggleAuto(zoneId, enabled) {
-  socket.emit('set_auto_mode', { zoneId, enabled });
-}
-
-function saveRule(zoneId) {
-  const rule = {
-    moistureMin: parseFloat(document.getElementById(`r-min-${zoneId}`).value),
-    moistureMax: parseFloat(document.getElementById(`r-max-${zoneId}`).value),
-    maxDurationMin: parseInt(document.getElementById(`r-dur-${zoneId}`).value),
-    cooldownMin: parseInt(document.getElementById(`r-cd-${zoneId}`).value),
-    rainPause: document.getElementById(`r-rain-${zoneId}`).checked
-  };
-  socket.emit('update_rule', { zoneId, rule });
-}
-
-function getCurrentStage(crop) {
-  const month = new Date().getMonth() + 1;
-  const stages = state.cropStages[crop]?.stages || [];
-  return stages.find(s => s.months.includes(month)) || stages[0];
-}
-</script>
+  <!-- ═══ Scripts ═══ -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/alerts.js"></script>
+  <script src="/js/dashboard.js"></script>
+  <script src="/js/weather.js"></script>
+  <script src="/js/advisory.js"></script>
+  <script src="/js/audit.js"></script>
+  <script src="/js/app.js"></script>
 </body>
 </html>
