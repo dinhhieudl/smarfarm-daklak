@@ -92,6 +92,8 @@ const API = (() => {
     logout,
     getToken,
     getUser,
-    isAuthenticated
+    isAuthenticated,
+    getHistory: (zone, hours = 24, limit = 200) =>
+      request(`/history?zone=${zone}&hours=${hours}&limit=${limit}`)
   };
 })();

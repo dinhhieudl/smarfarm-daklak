@@ -33,6 +33,16 @@ const DEV_EUI = 'aabbccdd11223344';
 const MAX_EVENTS = 200;
 const MAX_HISTORY = 120;
 
+// ─── Multi-zone sensor config ─────────────────────────
+const ZONE_SENSORS = [
+  { devEUI: 'aabbccdd11223344', zoneId: 'zone-A', name: 'Khu A', crop: 'robusta', soilType: 'bazan-red',
+    offsets: { temperature: 0, moisture: 0, ec: 0, ph: 0, nitrogen: 0, phosphorus: 0, potassium: 0 } },
+  { devEUI: 'aabbccdd11223345', zoneId: 'zone-B', name: 'Khu B', crop: 'robusta', soilType: 'bazan-red',
+    offsets: { temperature: -0.5, moisture: 3, ec: -20, ph: 0.1, nitrogen: -5, phosphorus: 2, potassium: -10 } },
+  { devEUI: 'aabbccdd11223346', zoneId: 'zone-C', name: 'Khu C', crop: 'arabica', soilType: 'bazan-yellow',
+    offsets: { temperature: -1.0, moisture: 5, ec: 30, ph: -0.2, nitrogen: 10, phosphorus: 5, potassium: 15 } }
+];
+
 // ─── Simulation State ─────────────────────────────────
 const faultInjector = new FaultInjector();
 
@@ -334,28 +344,38 @@ function connectMQTT() {
 
 function publishSensorData(data) {
   const d = data || simState.data;
-  const topic = `application/${APP_ID}/device/${DEV_EUI}/event/up`;
 
-  const payload = {
-    applicationId: APP_ID, applicationName: 'SmartFarm',
-    deviceName: 'soil-sensor-01', devEUI: DEV_EUI,
-    fCnt: simState.stats.totalSent, fPort: 2, data: '',
-    object: {
-      temperature: Math.round(d.temperature * 10) / 10,
-      moisture: Math.round(d.moisture * 10) / 10,
-      ec: Math.round(d.ec), salinity: Math.round(d.salinity),
-      nitrogen: Math.round(d.nitrogen), phosphorus: Math.round(d.phosphorus),
-      potassium: Math.round(d.potassium), ph: Math.round(d.ph * 10) / 10
-    },
-    rxInfo: [{ gatewayID: 'e870-gateway-01', rssi: -65 - Math.floor(Math.random() * 20), loRaSNR: 7.5 + Math.random() * 3 }],
-    txInfo: { frequency: 923200000, dr: 2 },
-    time: new Date().toISOString()
-  };
+  // Publish for all zone sensors with per-zone offsets
+  for (const sensor of ZONE_SENSORS) {
+    const topic = `application/${APP_ID}/device/${sensor.devEUI}/event/up`;
 
-  if (mqttClient && mqttConnected) {
-    mqttClient.publish(topic, JSON.stringify(payload), { qos: 0 });
-    simState.stats.totalSent++;
+    const zoneData = {
+      temperature: Math.round((d.temperature + sensor.offsets.temperature) * 10) / 10,
+      moisture: Math.round((d.moisture + sensor.offsets.moisture) * 10) / 10,
+      ec: Math.round(d.ec + sensor.offsets.ec),
+      salinity: Math.round((d.ec + sensor.offsets.ec) * 0.5),
+      nitrogen: Math.round(d.nitrogen + sensor.offsets.nitrogen),
+      phosphorus: Math.round(d.phosphorus + sensor.offsets.phosphorus),
+      potassium: Math.round(d.potassium + sensor.offsets.potassium),
+      ph: Math.round((d.ph + sensor.offsets.ph) * 10) / 10
+    };
+
+    const payload = {
+      applicationId: APP_ID, applicationName: 'SmartFarm',
+      deviceName: `soil-sensor-${sensor.zoneId}`, devEUI: sensor.devEUI,
+      fCnt: simState.stats.totalSent, fPort: 2, data: '',
+      object: zoneData,
+      rxInfo: [{ gatewayID: 'e870-gateway-01', rssi: -65 - Math.floor(Math.random() * 20), loRaSNR: 7.5 + Math.random() * 3 }],
+      txInfo: { frequency: 923200000, dr: 2 },
+      time: new Date().toISOString()
+    };
+
+    if (mqttClient && mqttConnected) {
+      mqttClient.publish(topic, JSON.stringify(payload), { qos: 0 });
+    }
   }
+
+  simState.stats.totalSent++;
 
   io.emit('sensor_update', {
     data: { ...d }, timestamp: new Date().toISOString(),
@@ -612,7 +632,13 @@ app.post('/api/auto', (req, res) => {
 app.post('/api/publish', (req, res) => {
   const body = req.body || {};
   Object.keys(body).forEach(k => {
-    if (Object.prototype.hasOwnProperty.call(simState.data, k)) simState.data[k] = parseFloat(body[k]) || simState.data[k];
+    if (!Object.prototype.hasOwnProperty.call(simState.data, k)) return;
+    const val = body[k];
+    // Only accept numbers or numeric strings — reject booleans, arrays, objects
+    if (typeof val === 'boolean' || Array.isArray(val) || (typeof val === 'object' && val !== null)) return;
+    const num = parseFloat(val);
+    if (!Number.isFinite(num)) return;
+    simState.data[k] = num;
   });
   tick();
   res.json({ ok: true, sent: simState.stats.totalSent, data: simState.data });

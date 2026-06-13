@@ -17,6 +17,7 @@ const { getWeather, refreshWeather, getCachedWeather } = require('./lib/weather'
 const scheduler = require('./lib/scheduler');
 const auditModule = require('./lib/audit');
 const alertsModule = require('./lib/alerts');
+const { apiLimiter, authLimiter, controlLimiter, exportLimiter } = require('./lib/rate-limiter');
 
 const app = express();
 const server = http.createServer(app);
@@ -28,8 +29,14 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '1mb' }));
 
 // ─── CORS Middleware ──────────────────────────────────
+const ALLOWED_ORIGINS = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['*'];
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.includes('*')) {
+    res.header('Access-Control-Allow-Origin', '*');
+  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -43,7 +50,9 @@ const SIMULATOR_URL = process.env.SIMULATOR_URL || 'http://localhost:3001';
 const MQTT_RECONNECT_INTERVAL = 5000;
 const MAX_CONTROL_HISTORY = 200;
 const MAX_ADVISORY_HISTORY = 100;
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production'
+  ? (() => { throw new Error('JWT_SECRET env var is required in production'); })()
+  : 'dev-only-change-me-in-production');
 const JWT_EXPIRY = '24h';
 
 // ─── Load Externalized Configuration ──────────────────
@@ -82,12 +91,16 @@ const predictiveIrrigation = new PredictiveIrrigation({
   altitude: 500 // DakLak elevation
 });
 
-// ─── Default Users (hardcoded, bcrypt-hashed) ─────────
+// ─── Default Users — passwords from env vars, fallback for dev only ──
+const DEFAULT_ADMIN_PASS = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? null : 'admin123');
+const DEFAULT_OPERATOR_PASS = process.env.OPERATOR_PASSWORD || (process.env.NODE_ENV === 'production' ? null : 'operator123');
+const DEFAULT_VIEWER_PASS = process.env.VIEWER_PASSWORD || (process.env.NODE_ENV === 'production' ? null : 'viewer123');
+
 const USERS = [
-  { username: 'admin', passwordHash: '$2b$10$mWeNNwVkij4wGVdE0Hocsu6gHBtDue.y5tLIML.039cXVLGj0k5nO', role: 'admin' },
-  { username: 'operator', passwordHash: '$2b$10$muv6KhJN9NzBKd/4ulYEoeMaU.e.yl/gXn4DBuva9ja9lppP8RaWa', role: 'operator' },
-  { username: 'viewer', passwordHash: '$2b$10$xcftxQ0eVgZ1Ct26La0jAelnOckNdGalrp2Jgq.0UHIAigiS47Q8y', role: 'viewer' }
-];
+  { username: 'admin', passwordHash: DEFAULT_ADMIN_PASS ? bcrypt.hashSync(DEFAULT_ADMIN_PASS, 10) : '', role: 'admin' },
+  { username: 'operator', passwordHash: DEFAULT_OPERATOR_PASS ? bcrypt.hashSync(DEFAULT_OPERATOR_PASS, 10) : '', role: 'operator' },
+  { username: 'viewer', passwordHash: DEFAULT_VIEWER_PASS ? bcrypt.hashSync(DEFAULT_VIEWER_PASS, 10) : '', role: 'viewer' }
+].filter(u => u.passwordHash); // Remove users without passwords
 
 // ─── JWT Auth Middleware ───────────────────────────────
 function authenticateToken(req, res, next) {
@@ -117,6 +130,9 @@ function authorize(...allowedRoles) {
   };
 }
 
+// Apply rate limiting to all API routes
+app.use('/api', apiLimiter);
+
 // Apply auth to all /api/* routes EXCEPT /api/health and /api/auth/login
 app.use('/api', (req, res, next) => {
   // Skip auth for health check and login
@@ -127,7 +143,7 @@ app.use('/api', (req, res, next) => {
 });
 
 // ─── Auth Routes ──────────────────────────────────────
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, (req, res) => {
   const { username, password } = req.body || {};
 
   if (!username || !password) {
@@ -707,7 +723,7 @@ app.get('/api/zones', (req, res) => {
 
 app.get('/api/actuators', (req, res) => res.json(actuators));
 
-app.post('/api/control', authorize('admin', 'operator'), (req, res) => {
+app.post('/api/control', controlLimiter, authorize('admin', 'operator'), (req, res) => {
   const { actuatorId, action } = req.body || {};
   if (!actuatorId || !action) {
     return res.status(400).json({ error: 'Missing actuatorId or action', code: 'MISSING_FIELDS' });
@@ -718,6 +734,9 @@ app.post('/api/control', authorize('admin', 'operator'), (req, res) => {
   const validActions = ['on', 'off', 'open', 'close'];
   if (!validActions.includes(action)) {
     return res.status(400).json({ error: `Invalid action. Must be one of: ${validActions.join(', ')}`, code: 'INVALID_ACTION' });
+  }
+  if (!actuators[actuatorId]) {
+    return res.status(404).json({ error: `Actuator '${actuatorId}' not found`, code: 'ACTUATOR_NOT_FOUND' });
   }
   const success = controlActuator(actuatorId, action, 'api');
   res.json({ success, actuator: actuators[actuatorId] });
@@ -889,7 +908,7 @@ function jsonToCsv(rows, columns) {
   return header + '\n' + lines.join('\n') + '\n';
 }
 
-app.get('/api/export/sensors', async (req, res) => {
+app.get('/api/export/sensors', exportLimiter, async (req, res) => {
   const format = (req.query.format || 'json').toLowerCase();
   const from = req.query.from;
   const to = req.query.to;
@@ -957,7 +976,7 @@ app.get('/api/export/sensors', async (req, res) => {
       moisture: d.moisture,
       ec: d.ec,
       salinity: d.salinity,
-      nitrogen: d.nitrogen || d.nitrogen,
+      nitrogen: d.nitrogen || d.N,
       phosphorus: d.phosphorus,
       potassium: d.potassium,
       ph: d.ph
@@ -971,7 +990,7 @@ app.get('/api/export/sensors', async (req, res) => {
   res.json(data);
 });
 
-app.get('/api/export/audit', (req, res) => {
+app.get('/api/export/audit', exportLimiter, (req, res) => {
   const format = (req.query.format || 'json').toLowerCase();
   const from = req.query.from;
   const to = req.query.to;

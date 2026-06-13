@@ -157,23 +157,18 @@ function calculateETc(et0, growthStage) {
  * @param {number} [params.currentMoisture=50] - Current soil moisture (%)
  * @param {number} [params.targetMoisture=60] - Target soil moisture (%)
  * @param {number} [params.soilDepth=30] - Root zone depth (cm)
- * @param {number} [params.fieldCapacity=45] - Field capacity moisture (%)
  * @returns {object} { irrigationNeed, breakdown }
  */
-function calculateIrrigationNeed({ etc, effectiveRainfall = 0, currentMoisture = 50, targetMoisture = 60, soilDepth = 30, fieldCapacity = 45 }) {
+function calculateIrrigationNeed({ etc, effectiveRainfall = 0, currentMoisture = 50, targetMoisture = 60, soilDepth = 30 }) {
   // Soil moisture deficit (mm equivalent)
-  // Approximate: 1% moisture in 30cm soil ≈ 3mm water
   const moistureDeficit = Math.max(0, (targetMoisture - currentMoisture) * soilDepth * 0.1);
 
   // Net irrigation need (mm)
   const netNeed = Math.max(0, etc - effectiveRainfall + moistureDeficit);
 
-  // Convert mm to liters per m² (1mm = 1 L/m²)
-  const irrigationLitersPerM2 = netNeed;
-
   return {
     irrigationNeed: Math.round(netNeed * 100) / 100,
-    irrigationLitersPerM2: Math.round(irrigationLitersPerM2 * 100) / 100,
+    irrigationLitersPerM2: Math.round(netNeed * 100) / 100,
     breakdown: {
       etc: Math.round(etc * 100) / 100,
       effectiveRainfall: Math.round(effectiveRainfall * 100) / 100,
@@ -187,13 +182,6 @@ function calculateIrrigationNeed({ etc, effectiveRainfall = 0, currentMoisture =
 
 /**
  * Full irrigation plan for a zone
- * Combines ET₀, Kc, and irrigation need calculation
- *
- * @param {object} zone - Zone config { id, name, crop, area }
- * @param {object} sensor - Current sensor data { temperature, moisture }
- * @param {object} weather - Weather data { rainfall, humidity, windSpeed }
- * @param {string} growthStage - Current crop growth stage id
- * @returns {object} Full irrigation plan
  */
 function getIrrigationPlan(zone, sensor, weather, growthStage) {
   const et0Result = calculateET0({
@@ -203,18 +191,11 @@ function getIrrigationPlan(zone, sensor, weather, growthStage) {
   });
 
   const etcResult = calculateETc(et0Result.et0, growthStage);
-
-  // Effective rainfall (typically 70-80% of total rainfall)
   const effectiveRainfall = (weather.rainfall || 0) * 0.75;
 
-  // Target moisture from growth stage
   const stageTargets = {
-    dormant: 30,
-    flowering: 55,
-    'fruit-set': 60,
-    'fruit-growth': 55,
-    ripening: 40,
-    harvest: 35
+    dormant: 30, flowering: 55, 'fruit-set': 60,
+    'fruit-growth': 55, ripening: 40, harvest: 35
   };
   const targetMoisture = stageTargets[growthStage] || 55;
 
@@ -225,7 +206,6 @@ function getIrrigationPlan(zone, sensor, weather, growthStage) {
     targetMoisture
   });
 
-  // Calculate volume for the zone area
   const areaM2 = zone.area || 1000;
   const volumeLiters = needResult.irrigationLitersPerM2 * areaM2;
 
@@ -247,12 +227,9 @@ function getIrrigationPlan(zone, sensor, weather, growthStage) {
   };
 }
 
-/**
- * Generate human-readable recommendation
- */
 function getRecommendation(irrigationNeed, rainfall, currentMoisture, targetMoisture) {
   if (rainfall > 20) {
-    return { action: 'skip', reason: 'Mưa lớn —暂停 tưới', priority: 'low' };
+    return { action: 'skip', reason: 'Mưa lớn — tạm dừng tưới', priority: 'low' };
   }
   if (currentMoisture >= targetMoisture) {
     return { action: 'none', reason: 'Độ ẩm đất đạt mục tiêu', priority: 'none' };
@@ -267,12 +244,6 @@ function getRecommendation(irrigationNeed, rainfall, currentMoisture, targetMois
 }
 
 module.exports = {
-  calculateET0,
-  calculateETc,
-  calculateIrrigationNeed,
-  getIrrigationPlan,
-  calculateRa,
-  getDayOfYear,
-  KC_VALUES,
-  LATITUDE
+  calculateET0, calculateETc, calculateIrrigationNeed,
+  getIrrigationPlan, calculateRa, getDayOfYear, KC_VALUES, LATITUDE
 };

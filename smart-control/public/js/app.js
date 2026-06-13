@@ -241,6 +241,7 @@ const App = (() => {
       Advisory.render(state);
       Weather.render(state);
       Audit.render(state);
+      Charts.render(state);
     }, 100);
   }
 

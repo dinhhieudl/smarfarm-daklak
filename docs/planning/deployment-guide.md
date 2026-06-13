@@ -409,6 +409,7 @@ var bytes = Buffer.from(msg.payload, 'base64');
 if (bytes.length < 16) {
     node.warn("Payload too short: " + bytes.length);
     return null;
+}
 
 var tempRaw = (bytes[0] << 8) | bytes[1];
 if (tempRaw > 0x7FFF) tempRaw = tempRaw - 0x10000;
