@@ -21,6 +21,9 @@ desktop.ini
 # Logs
 *.log
 npm-debug.log*
+# Keep logs directory structure but ignore log files
+smart-control/logs/*
+!smart-control/logs/.gitkeep
 
 # Build
 dist/
@@ -41,3 +44,7 @@ coverage/
 # Temp
 tmp/
 temp/
+
+# Logs directory (keep .gitkeep)
+logs/*
+!logs/.gitkeep

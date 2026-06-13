@@ -7,6 +7,9 @@ const { Server } = require('socket.io');
 const mqtt = require('mqtt');
 const path = require('path');
 const cron = require('node-cron');
+const weatherModule = require('./lib/weather');
+const audit = require('./lib/audit');
+const alerts = require('./lib/alerts');
 
 const app = express();
 const server = http.createServer(app);
@@ -545,7 +548,7 @@ function clearIrrigationTimer(zoneId) {
   }
 }
 
-function controlActuator(actuatorId, action, source = 'manual') {
+function controlActuator(actuatorId, action, source = 'manual', userId = 'anonymous') {
   const act = actuators[actuatorId];
   if (!act) return false;
 
@@ -560,6 +563,22 @@ function controlActuator(actuatorId, action, source = 'manual') {
   }
 
   act.lastChange = new Date().toISOString();
+
+  // ── Audit Log ──
+  const auditEntry = audit.logAction({
+    action,
+    actuatorId,
+    source,
+    userId,
+    previousState: prevState,
+    newState: act.state
+  });
+  io.emit('audit_log', auditEntry);
+
+  // ── Alert: pump duration check ──
+  if (act.type === 'pump' && act.state === 'on') {
+    // Duration will be checked on next sensor eval cycle
+  }
 
   // Publish MQTT command (downlink)
   const topic = `application/${APP_ID}/device/actuator/${actuatorId}/command`;
@@ -630,6 +649,12 @@ function connectMQTT() {
             lastUpdate: new Date().toISOString()
           };
           io.emit('zone_sensor', { zoneId: zone.id, data: zoneSensorData[zone.id] });
+
+          // ── Evaluate alerts on new sensor data ──
+          const newAlerts = alerts.evaluateSensor(zone.id, zoneSensorData[zone.id]);
+          newAlerts.forEach(alert => {
+            io.emit('alert', alert);
+          });
         }
       }
     } catch (e) {
@@ -654,26 +679,10 @@ function connectMQTT() {
   });
 }
 
-// ─── Weather Fetch (Simulated for DakLak) ─────────────
-function updateWeather() {
-  const month = new Date().getMonth() + 1;
-  const isRainy = month >= 5 && month <= 10;
-
-  weatherData = {
-    temperature: isRainy ? 25 + Math.random() * 5 : 28 + Math.random() * 8,
-    humidity: isRainy ? 75 + Math.random() * 20 : 50 + Math.random() * 20,
-    rainfall: isRainy ? (Math.random() > 0.5 ? Math.random() * 30 : 0) : 0,
-    windSpeed: 5 + Math.random() * 10,
-    cloudCover: isRainy ? 60 + Math.random() * 30 : 20 + Math.random() * 30,
-    forecast: [
-      { day: 'Hôm nay', temp: 28, rain: isRainy ? 15 : 0, desc: isRainy ? 'Mưa rào' : 'Nắng' },
-      { day: 'Ngày mai', temp: 29, rain: isRainy ? 8 : 0, desc: isRainy ? 'Mưa nhẹ' : 'Ít mây' },
-      { day: 'Ngày kia', temp: 30, rain: isRainy ? 20 : 0, desc: isRainy ? 'Mưa vừa' : 'Nắng' }
-    ],
-    lastUpdate: new Date().toISOString(),
-    source: 'simulated'
-  };
-
+// ─── Weather Fetch (Real API + Simulated Fallback) ─────
+async function updateWeather() {
+  const data = await weatherModule.getWeather();
+  weatherData = data;
   io.emit('weather_update', weatherData);
 }
 
@@ -682,6 +691,29 @@ const cronJobs = [];
 
 cronJobs.push(cron.schedule('*/1 * * * *', () => {
   checkAutoIrrigation();
+
+  // ── Evaluate alerts on simulated sensor data (when no MQTT) ──
+  ZONES.forEach(zone => {
+    const newAlerts = alerts.evaluateSensor(zone.id, zoneSensorData[zone.id]);
+    newAlerts.forEach(alert => {
+      io.emit('alert', alert);
+    });
+  });
+
+  // ── Check pump duration ──
+  Object.values(actuators).forEach(act => {
+    if (act.type === 'pump' && act.state === 'on' && act.lastChange) {
+      // Find maxDurationMin from any zone using this pump
+      const zone = ZONES.find(z => z.pumpId === act.id);
+      if (zone && irrigationRules[zone.id]) {
+        const maxDur = irrigationRules[zone.id].maxDurationMin;
+        const pumpAlert = alerts.checkPumpDuration(act.id, act.state, act.lastChange, maxDur);
+        if (pumpAlert) {
+          io.emit('alert', pumpAlert);
+        }
+      }
+    }
+  });
 }));
 
 cronJobs.push(cron.schedule('*/30 * * * *', () => {
@@ -706,7 +738,9 @@ io.on('connection', (socket) => {
     weather: weatherData,
     cropStages: CROP_STAGES,
     controlHistory: controlHistory.slice(0, 50),
-    mqttConnected
+    mqttConnected,
+    alerts: alerts.getAlerts({ limit: 50 }),
+    alertsSummary: alerts.getSummary()
   });
 
   // Generate initial advisories
@@ -720,7 +754,8 @@ io.on('connection', (socket) => {
     if (!actuatorId || !action) return;
     const validActions = ['on', 'off', 'open', 'close'];
     if (!validActions.includes(action)) return;
-    const success = controlActuator(actuatorId, action, 'manual');
+    const userId = socket.handshake.auth?.userId || socket.handshake.query?.userId || 'anonymous';
+    const success = controlActuator(actuatorId, action, 'manual', userId);
     socket.emit('control_result', { actuatorId, action, success });
   });
 
@@ -766,8 +801,10 @@ io.on('connection', (socket) => {
   });
 
   // Refresh weather
-  socket.on('refresh_weather', () => {
-    updateWeather();
+  socket.on('refresh_weather', async () => {
+    const data = await weatherModule.refreshWeather();
+    weatherData = data;
+    io.emit('weather_update', weatherData);
   });
 });
 
@@ -803,11 +840,61 @@ app.get('/api/advisory/:zoneId', (req, res) => {
   res.json({ zone: zone.id, ...generateAdvisory(zone) });
 });
 
-app.get('/api/weather', (req, res) => res.json(weatherData));
+app.get('/api/weather', async (req, res) => {
+  const data = await weatherModule.getWeather();
+  res.json(data);
+});
 
 app.get('/api/crop-stages', (req, res) => res.json(CROP_STAGES));
 
 app.get('/api/history', (req, res) => res.json(controlHistory.slice(0, 100)));
+
+// ── Audit Log API ──
+app.get('/api/audit', (req, res) => {
+  const { from, to, limit } = req.query;
+  const entries = audit.getEntries({
+    from,
+    to,
+    limit: limit ? parseInt(limit, 10) : 100
+  });
+  res.json({
+    entries,
+    total: audit.getCount({ from, to })
+  });
+});
+
+// ── Alerts API ──
+app.get('/api/alerts', (req, res) => {
+  const { severity, unacknowledged, limit } = req.query;
+  const alertList = alerts.getAlerts({
+    severity: severity || undefined,
+    unacknowledgedOnly: unacknowledged === 'true',
+    limit: limit ? parseInt(limit, 10) : 100
+  });
+  res.json({
+    alerts: alertList,
+    summary: alerts.getSummary()
+  });
+});
+
+app.post('/api/alerts/acknowledge/:id', (req, res) => {
+  const alertId = req.params.id;
+  const userId = req.body?.userId || req.headers['x-user-id'] || 'anonymous';
+  const result = alerts.acknowledge(alertId, userId);
+  if (!result) {
+    return res.status(404).json({ error: 'Alert not found' });
+  }
+  io.emit('alert_acknowledged', result);
+  res.json({ success: true, alert: result });
+});
+
+// ── Weather Refresh API (force) ──
+app.post('/api/weather/refresh', async (req, res) => {
+  const data = await weatherModule.refreshWeather();
+  weatherData = data;
+  io.emit('weather_update', weatherData);
+  res.json(data);
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -867,5 +954,6 @@ server.listen(PORT, () => {
   console.log(`   Zones:      ${ZONES.length}`);
   console.log(`   Actuators:  ${Object.keys(actuators).length}\n`);
   connectMQTT();
-  updateWeather();
+  updateWeather().catch(err => console.error('[Weather] Initial fetch failed:', err.message));
+  audit.init();
 });
