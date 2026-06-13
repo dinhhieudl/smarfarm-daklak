@@ -17,32 +17,32 @@ const SCENARIOS = {
     phases: [
       {
         name: 'Day 1-2: Drought begins',
-        durationTicks: 2,
+        durationTicks: 1200,
         setWeather: { rainfall: 0, temperature: 33, humidity: 45, windSpeed: 12 },
         setSoil: { moisture: 50 },
         notes: 'Bắt đầu khô hạn, đất còn ẩm'
       },
       {
         name: 'Day 3-4: Soil drying',
-        durationTicks: 2,
+        durationTicks: 1200,
         setWeather: { rainfall: 0, temperature: 35, humidity: 40, windSpeed: 15 },
         notes: 'Đất bắt đầu khô, EC tăng'
       },
       {
         name: 'Day 5-6: Critical moisture',
-        durationTicks: 2,
+        durationTicks: 1200,
         setWeather: { rainfall: 0, temperature: 37, humidity: 35, windSpeed: 18 },
         notes: 'Độ ẩm đất xuống dưới ngưỡng, cảnh báo cấp bách'
       },
       {
         name: 'Day 7-8: Severe drought',
-        durationTicks: 2,
+        durationTicks: 1200,
         setWeather: { rainfall: 0, temperature: 39, humidity: 30, windSpeed: 20 },
         notes: 'Hạn hán nghiêm trọng, cây héo'
       },
       {
         name: 'Day 9-10: Extreme drought',
-        durationTicks: 2,
+        durationTicks: 1200,
         setWeather: { rainfall: 0, temperature: 40, humidity: 25, windSpeed: 22 },
         notes: 'Hạn hán cực đoan, EC đất nhiễm mặn'
       }
@@ -57,25 +57,25 @@ const SCENARIOS = {
     phases: [
       {
         name: 'Day 1: Light rain',
-        durationTicks: 1,
+        durationTicks: 1500,
         setWeather: { rainfall: 15, temperature: 25, humidity: 85 },
         notes: 'Mưa nhẹ bắt đầu'
       },
       {
         name: 'Day 2-3: Heavy rain',
-        durationTicks: 2,
+        durationTicks: 1500,
         setWeather: { rainfall: 45, temperature: 24, humidity: 92 },
         notes: 'Mưa to liên tục'
       },
       {
         name: 'Day 4: Flooding risk',
-        durationTicks: 1,
+        durationTicks: 1500,
         setWeather: { rainfall: 60, temperature: 23, humidity: 95 },
         notes: 'Nguy cơ ngập úng cao'
       },
       {
         name: 'Day 5: Rain eases',
-        durationTicks: 1,
+        durationTicks: 1500,
         setWeather: { rainfall: 10, temperature: 26, humidity: 80 },
         notes: 'Mưa giảm dần'
       }
@@ -90,19 +90,19 @@ const SCENARIOS = {
     phases: [
       {
         name: 'Day 1: Heat builds',
-        durationTicks: 1,
+        durationTicks: 2000,
         setWeather: { temperature: 38, humidity: 35, rainfall: 0, windSpeed: 5 },
         notes: 'Nhiệt độ bắt đầu tăng'
       },
       {
         name: 'Day 2: Peak heat',
-        durationTicks: 1,
+        durationTicks: 2000,
         setWeather: { temperature: 42, humidity: 25, rainfall: 0, windSpeed: 3 },
         notes: 'Đỉnh nắng nóng'
       },
       {
         name: 'Day 3: Slight relief',
-        durationTicks: 1,
+        durationTicks: 2000,
         setWeather: { temperature: 40, humidity: 30, rainfall: 0, windSpeed: 8 },
         notes: 'Nóng nhưng giảm nhẹ'
       }
@@ -117,30 +117,30 @@ const SCENARIOS = {
     phases: [
       {
         name: 'Normal operation',
-        durationTicks: 5,
+        durationTicks: 120,
         notes: 'Hoạt động bình thường'
       },
       {
         name: 'Sensor freeze',
-        durationTicks: 8,
+        durationTicks: 120,
         applyFault: 'sensor_stuck',
         notes: 'Cảm biến bị treo, giá trị đứng yên'
       },
       {
         name: 'Sensor drift',
-        durationTicks: 8,
+        durationTicks: 120,
         applyFault: 'sensor_drift',
         notes: 'Cảm biến trôi giá trị sau khi "thaw"'
       },
       {
         name: 'Garbage data',
-        durationTicks: 5,
+        durationTicks: 120,
         applyFault: 'garbage_data',
         notes: 'Cảm biến gửi dữ liệu rác'
       },
       {
         name: 'Recovery',
-        durationTicks: 5,
+        durationTicks: 120,
         notes: 'Cảm biến phục hồi sau reset'
       }
     ]
@@ -154,18 +154,18 @@ const SCENARIOS = {
     phases: [
       {
         name: 'Normal',
-        durationTicks: 5,
+        durationTicks: 120,
         notes: 'Gateway hoạt động bình thường'
       },
       {
         name: 'Gateway down',
-        durationTicks: 20,
+        durationTicks: 120,
         applyFault: 'gateway_failure',
         notes: 'Gateway bị crash — mất toàn bộ dữ liệu'
       },
       {
         name: 'Gateway recovery',
-        durationTicks: 10,
+        durationTicks: 120,
         notes: 'Gateway khởi động lại, kết nối phục hồi'
       }
     ]
@@ -179,12 +179,12 @@ const SCENARIOS = {
     phases: [
       {
         name: 'Active transmission',
-        durationTicks: 1,
+        durationTicks: 600,
         notes: 'Node thức dậy, gửi data trong 5 phút'
       },
       {
         name: 'Deep sleep',
-        durationTicks: 9,
+        durationTicks: 600,
         applyFault: 'gateway_down', // reuse: no data during sleep
         notes: 'Node ngủ sâu 55 phút — không có data'
       }
@@ -200,31 +200,31 @@ const SCENARIOS = {
     phases: [
       {
         name: '00:00-06:00 Night',
-        durationTicks: 6,
+        durationTicks: 240,
         setWeather: { temperature: 22, humidity: 85, rainfall: 0 },
         notes: 'Đêm lạnh, độ ẩm cao'
       },
       {
         name: '06:00-10:00 Morning',
-        durationTicks: 4,
+        durationTicks: 240,
         setWeather: { temperature: 26, humidity: 70, rainfall: 0 },
         notes: 'Sáng sớm, tưới tự động có thể kích hoạt'
       },
       {
         name: '10:00-14:00 Hot noon',
-        durationTicks: 4,
+        durationTicks: 240,
         setWeather: { temperature: 35, humidity: 50, rainfall: 0 },
         notes: 'Trưa nóng, ET₀ cao'
       },
       {
         name: '14:00-18:00 Afternoon rain',
-        durationTicks: 4,
+        durationTicks: 240,
         setWeather: { temperature: 30, humidity: 75, rainfall: 25 },
         notes: 'Chiều mưa rào (typical DakLak)'
       },
       {
         name: '18:00-24:00 Evening',
-        durationTicks: 6,
+        durationTicks: 240,
         setWeather: { temperature: 25, humidity: 80, rainfall: 5 },
         notes: 'Tối mát, mưa nhỏ'
       }
@@ -239,14 +239,14 @@ const SCENARIOS = {
     phases: [
       {
         name: 'Heavy rain leaching',
-        durationTicks: 15,
+        durationTicks: 1500,
         setWeather: { rainfall: 35, temperature: 25, humidity: 85 },
         setSoil: { nitrogen: 80, phosphorus: 25, potassium: 120 },
         notes: 'Mưa lớn rửa trôi dinh dưỡng'
       },
       {
         name: 'Continued depletion',
-        durationTicks: 15,
+        durationTicks: 1500,
         setWeather: { rainfall: 20, temperature: 26, humidity: 80 },
         notes: 'Dinh dưỡng tiếp tục giảm, cây thiếu NPK'
       }

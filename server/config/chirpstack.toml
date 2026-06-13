@@ -13,9 +13,9 @@
 [redis]
   url = "redis://redis:6379"
 
-# ── Network Server ──
-[network_server]
-  # AS923 for Vietnam
+# ── Network ──
+[network]
+  # AS923 for Vietnam (must match region_*.toml filename)
   enabled_regions = ["as923"]
 
 # ── MQTT Integration ──
@@ -24,49 +24,17 @@
 
   [integration.mqtt]
     server = "tcp://mosquitto:1883"
-    # Use JSON encoding for easy Node-RED parsing
     json = true
-    # Topic template
     event_topic_template = "application/{{ .ApplicationID }}/device/{{ .DevEUI }}/event/{{ .EventType }}"
     command_topic_template = "application/{{ .ApplicationID }}/device/{{ .DevEUI }}/command/{{ .CommandType }}"
 
-# ── Region Server ──
-[region_server]
-  enabled = true
-
-  # AS923 Group 1 (most common for Vietnam)
-  [[region_server.configuration]]
-    region = "AS923"
-    enabled = true
-
-  [[region_server.configuration]]
-    region = "AS923_2"
-    enabled = false
-
-  [[region_server.configuration]]
-    region = "AS923_3"
-    enabled = false
-
-  [[region_server.configuration]]
-    region = "AS923_4"
-    enabled = false
-
 # ── Gateway ──
 [gateway]
-  # Allow gateways to connect without prior registration
-  # (auto-create on first connection)
   allow_unknown_gateways = true
-
-# ── Device Settings ──
-[device]
-  # Default class for all devices
-  default_class = "A"
 
 # ── API ──
 [api]
-  # Enable REST API
   bind = "0.0.0.0:8080"
-  # JWT secret (override via CHIRPSTACK_JWT_SECRET env var)
   secret = "${CHIRPSTACK_JWT_SECRET:-smarfarm-daklak-jwt-secret-2026}"
 
 # ── Monitoring ──

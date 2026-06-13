@@ -78,13 +78,26 @@ services:
         condition: service_started
     ports:
       - "8080:8080"     # Web UI
-      - "1700:1700/udp" # LoRa packet forwarder
     volumes:
       - ./config/chirpstack.toml:/etc/chirpstack/chirpstack.toml
       - ./config/region_as923.toml:/etc/chirpstack/region_as923.toml
     environment:
       - MQTT_BROKER_HOST=mosquitto
       - MQTT_BROKER_PORT=1883
+
+  # ── ChirpStack Gateway Bridge (UDP → MQTT) ──
+  chirpstack-gateway-bridge:
+    image: chirpstack/chirpstack-gateway-bridge:4.1
+    container_name: sf-gateway-bridge
+    restart: unless-stopped
+    ports:
+      - "1700:1700/udp"  # LoRa packet forwarder
+    volumes:
+      - ./config/gateway-bridge.toml:/etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
+    depends_on:
+      - mosquitto
+    networks:
+      - default
 
   # ── Node-RED (Data Processing) ──
   nodered:

@@ -1,0 +1,43 @@
+# ChirpStack Gateway Bridge Configuration
+# Receives UDP packets from LoRa gateways and forwards to MQTT
+
+# Use JSON encoding for messages
+marshaler = "json"
+
+[backend]
+  # Use Semtech UDP packet-forwarder backend
+  type = "semtech_udp"
+
+  # UDP listen port
+  udp_bind = "0.0.0.0:1700"
+
+  # Skip the CRC check of received packets
+  skip_crc_check = false
+
+[integration]
+  # Use MQTT integration
+  type = "mqtt"
+
+  [integration.mqtt]
+    # Event topic template (with region prefix for ChirpStack v4)
+    event_topic_template = "as923/gateway/{{ .GatewayID }}/event/{{ .EventType }}"
+
+    # State topic template
+    state_topic_template = "as923/gateway/{{ .GatewayID }}/state/{{ .StateType }}"
+
+    # Command topic template
+    command_topic_template = "as923/gateway/{{ .GatewayID }}/command/#"
+
+    # Client ID
+    client_id = "chirpstack-gateway-bridge"
+
+    # State retained
+    state_retained = true
+
+  [integration.mqtt.auth]
+    # Type of MQTT authentication
+    type = "generic"
+
+  [integration.mqtt.auth.generic]
+    # MQTT servers
+    servers = ["tcp://mosquitto:1883"]
