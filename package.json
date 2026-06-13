@@ -1,1 +1,13 @@
-{"name":"smartfarm-daklak","version":"1.0.0","private":true,"devDependencies":{"@eslint/js":"^10.0.1","eslint":"^10.5.0"}}
+{
+  "name": "smartfarm-daklak",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "lint": "eslint smart-control/server.js simulator/server.js",
+    "test": "cd smart-control && npm test && cd ../simulator && npm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.5.0"
+  }
+}

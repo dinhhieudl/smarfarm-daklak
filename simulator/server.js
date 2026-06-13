@@ -36,7 +36,7 @@ const MAX_HISTORY = 120;
 // ─── Simulation State ─────────────────────────────────
 const faultInjector = new FaultInjector();
 
-let simState = {
+const simState = {
   // Sensor data (current)
   data: {
     temperature: 27.5, moisture: 55, ec: 450, salinity: 220,
@@ -78,7 +78,7 @@ let simState = {
   }
 };
 
-let events = [];
+const events = [];
 let tickTimer = null;
 let mqttClient = null;
 let mqttConnected = false;
@@ -472,7 +472,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('update_param', ({ param, value }) => {
-    if (!simState.data.hasOwnProperty(param)) return;
+    if (!Object.prototype.hasOwnProperty.call(simState.data, param)) return;
     const num = parseFloat(value);
     if (!Number.isFinite(num)) return;
     simState.data[param] = num;
@@ -541,7 +541,7 @@ io.on('connection', (socket) => {
 
   // Actuator feedback (manual override from simulator UI)
   socket.on('set_actuator', ({ key, value }) => {
-    if (simState.actuators.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(simState.actuators, key)) {
       simState.actuators[key] = !!value;
       addEvent('info', `⚙️ Actuator ${key}: ${value ? 'ON' : 'OFF'}`);
     }
@@ -612,7 +612,7 @@ app.post('/api/auto', (req, res) => {
 app.post('/api/publish', (req, res) => {
   const body = req.body || {};
   Object.keys(body).forEach(k => {
-    if (simState.data.hasOwnProperty(k)) simState.data[k] = parseFloat(body[k]) || simState.data[k];
+    if (Object.prototype.hasOwnProperty.call(simState.data, k)) simState.data[k] = parseFloat(body[k]) || simState.data[k];
   });
   tick();
   res.json({ ok: true, sent: simState.stats.totalSent, data: simState.data });
@@ -620,7 +620,7 @@ app.post('/api/publish', (req, res) => {
 
 app.post('/api/actuator', (req, res) => {
   const { key, value } = req.body || {};
-  if (simState.actuators.hasOwnProperty(key)) {
+  if (Object.prototype.hasOwnProperty.call(simState.actuators, key)) {
     simState.actuators[key] = !!value;
     res.json({ ok: true, actuators: simState.actuators });
   } else {

@@ -749,7 +749,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // ─── Error Handler ────────────────────────────────────
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error('[Express] Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
 });
