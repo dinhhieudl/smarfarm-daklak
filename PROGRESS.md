@@ -2,7 +2,7 @@
 
 ## Sprint: 2026-06-13 (09:42 → 10:13 GMT+8, ~31 minutes)
 
-## Status: ✅ ALL PHASES COMPLETE
+## Status: ✅ ALL PHASES COMPLETE (Phase 6 added)
 
 ---
 
@@ -15,6 +15,7 @@
 | Phase 3: Frontend Refactor | ✅ DONE | `4f83e75` | Modular responsive dashboard, login UI, theme toggle |
 | Phase 4: Testing + CI/CD | ✅ DONE | `f411936` | 128 tests, ESLint, Prettier, GitHub Actions CI |
 | Phase 5: Predictive Irrigation | ✅ DONE | `50d71bc` | ET₀-based scheduling, data export, system health |
+| Phase 6: Rate Limit + Charts + Multi-zone Sim | ✅ DONE | `8d66469` | Rate limiting, historical charts, multi-zone simulation |
 
 ---
 
@@ -54,6 +55,12 @@
 - **Data Export**: CSV/JSON export for sensors and audit logs
 - **System Health**: Uptime, memory, CPU, service status endpoint
 
+### Phase 6 — Fullstack Engineer
+- **Rate Limiting**: In-memory sliding window, per-endpoint limits (auth: 10/15min, API: 120/min, control: 30/min, export: 10/min)
+- **Multi-zone Simulator**: Publishes sensor data for all 3 zones (A, B, C) with per-zone offsets via MQTT
+- **Historical Charts**: Chart.js from CDN, 4 chart types (Moisture+Temp dual-axis, EC+Salinity, pH, NPK), zone/time selectors
+- **WebSocket Reconnection**: Socket.IO auto-reconnect built-in
+
 ---
 
 ## Test Results
@@ -70,7 +77,7 @@ ESLint:        0 errors, 6 warnings
 ## Files Changed (since Phase 0)
 
 ```
-49 files changed, 17,601 insertions(+), 2,400 deletions(-)
+53 files changed, 18,132 insertions(+), 2,400 deletions(-)
 ```
 
 ### New Modules (smart-control/lib/)
@@ -82,6 +89,7 @@ ESLint:        0 errors, 6 warnings
 | et0.js | Evapotranspiration calculation |
 | influx.js | InfluxDB write/query client |
 | irrigation.js | Irrigation decision logic |
+| rate-limiter.js | In-memory sliding window rate limiter |
 | scheduler.js | Multi-zone predictive scheduling |
 | weather.js | Open-Meteo API integration |
 
