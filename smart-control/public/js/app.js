@@ -200,6 +200,14 @@ const App = (() => {
       Audit.render(state);
     });
 
+    socket.on('activity_new', (activity) => {
+      // Refresh activity log if the tab is visible
+      const tab = document.getElementById('tab-activities');
+      if (tab && tab.classList.contains('active')) {
+        ActivityLog.render(state);
+      }
+    });
+
     socket.on('mqtt_status', (s) => {
       const pill = document.getElementById('pill-mqtt');
       if (pill) {
@@ -242,6 +250,8 @@ const App = (() => {
       Weather.render(state);
       Audit.render(state);
       Charts.render(state);
+      FarmMap.render(state);
+      ActivityLog.render(state);
     }, 100);
   }
 
@@ -254,6 +264,11 @@ const App = (() => {
         btn.classList.add('active');
         const tab = document.getElementById(btn.dataset.tab);
         if (tab) tab.classList.add('active');
+
+        // Lazy render for heavy tabs
+        if (btn.dataset.tab === 'tab-map') FarmMap.render(state);
+        if (btn.dataset.tab === 'tab-activities') ActivityLog.render(state);
+        if (btn.dataset.tab === 'tab-charts') Charts.render(state);
       });
     });
   }
