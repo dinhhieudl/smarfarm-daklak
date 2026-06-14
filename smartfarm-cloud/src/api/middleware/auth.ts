@@ -1,15 +1,11 @@
 // ============================================================================
 // SmartFarm Cloud - Express Middleware: Authentication & Authorization
 // ============================================================================
-// Supports two auth methods:
-//   1. API Key: X-API-Key header (for edge agents / programmatic access)
-//   2. JWT Bearer: Authorization: Bearer <token> (for user sessions)
-// ============================================================================
 
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { validateApiKey } from '../services/auth';
-import { getUserById, getUserTenantId } from '../services/phoneAuth';
+import { validateApiKey } from '../../services/auth';
+import { getUserById, getUserTenantId } from '../../services/phoneAuth';
 import { config } from '../../config';
 import { JwtPayload } from '../../types';
 import { logger } from '../../utils/logger';
@@ -29,22 +25,20 @@ declare global {
 
 /**
  * Authenticate requests via API key OR JWT Bearer token.
- * - API Key: X-API-Key header → scopes from api_keys table
- * - JWT: Authorization: Bearer <token> → scopes from user role
  */
 export function authenticate(req: Request, res: Response, next: NextFunction): void {
   const apiKey = req.headers['x-api-key'] as string;
   const authHeader = req.headers.authorization;
 
-  // Try API key first
   if (apiKey) {
-    return authenticateApiKey(req, res, next, apiKey);
+    authenticateApiKey(req, res, next, apiKey);
+    return;
   }
 
-  // Try JWT Bearer token
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
-    return authenticateJwt(req, res, next, token);
+    authenticateJwt(req, res, next, token);
+    return;
   }
 
   res.status(401).json({
@@ -53,67 +47,61 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
   });
 }
 
-/**
- * Authenticate via API key
- */
 function authenticateApiKey(req: Request, res: Response, next: NextFunction, apiKey: string): void {
   if (!apiKey.startsWith('sf_') || apiKey.length < 20) {
-    res.status(401).json({
-      error: 'invalid_api_key',
-      message: 'Định dạng API key không hợp lệ',
-    });
+    res.status(401).json({ error: 'invalid_api_key', message: 'Định dạng API key không hợp lệ' });
     return;
   }
 
   validateApiKey(apiKey)
-    .then((result) => {
+    .then((result: any) => {
       if (!result.valid) {
-        res.status(401).json({
-          error: 'invalid_api_key',
-          message: 'API key không hợp lệ, đã hết hạn, hoặc đã bị thu hồi',
-        });
+        res.status(401).json({ error: 'invalid_api_key', message: 'API key không hợp lệ' });
         return;
       }
-
       req.tenantId = result.tenantId;
       req.gardenId = result.gardenId;
       req.scopes = result.scopes;
       req.authMethod = 'api_key';
       next();
     })
-    .catch((err) => {
+    .catch((err: any) => {
       logger.error({ err }, 'API key authentication error');
-      res.status(500).json({ error: 'auth_error', message: 'Lỗi xác thực' });
+      res.status(500).json({ error: 'auth_error' });
     });
 }
 
-/**
- * Authenticate via JWT Bearer token
- */
-async function authenticateJwt(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-  token: string
-): Promise<void> {
+function authenticateJwt(req: Request, res: Response, next: NextFunction, token: string): void {
   try {
     const payload = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
-    // Verify user still exists and is active
-    const user = await getUserById(payload.sub);
-    if (!user) {
-      res.status(401).json({ error: 'user_not_found', message: 'Người dùng không tồn tại' });
-      return;
-    }
+    getUserById(payload.sub)
+      .then((user: any) => {
+        if (!user) {
+          res.status(401).json({ error: 'user_not_found' });
+          return;
+        }
 
-    // Get tenant ID
-    const tenantId = payload.tenant_id || await getUserTenantId(payload.sub);
-
-    req.userId = payload.sub;
-    req.tenantId = tenantId;
-    req.scopes = roleToScopes(payload.role);
-    req.authMethod = 'jwt';
-    next();
+        getUserTenantId(payload.sub)
+          .then((tenantId: any) => {
+            req.userId = payload.sub;
+            req.tenantId = payload.tenant_id || tenantId;
+            req.scopes = roleToScopes(payload.role);
+            req.authMethod = 'jwt';
+            next();
+          })
+          .catch(() => {
+            req.userId = payload.sub;
+            req.tenantId = payload.tenant_id;
+            req.scopes = roleToScopes(payload.role);
+            req.authMethod = 'jwt';
+            next();
+          });
+      })
+      .catch((err: any) => {
+        logger.error({ err }, 'User lookup failed');
+        res.status(500).json({ error: 'auth_error' });
+      });
   } catch (err: any) {
     if (err.name === 'TokenExpiredError') {
       res.status(401).json({ error: 'token_expired', message: 'Token đã hết hạn' });
@@ -128,61 +116,36 @@ async function authenticateJwt(
   }
 }
 
-/**
- * Map user role to API scopes
- */
 function roleToScopes(role: string): string[] {
   switch (role) {
-    case 'admin':
-      return ['ingest', 'read', 'admin'];
-    case 'manager':
-      return ['ingest', 'read', 'admin'];
-    case 'consultant':
-      return ['read'];
-    case 'farmer':
-      return ['ingest', 'read'];
-    default:
-      return ['read'];
+    case 'admin': return ['ingest', 'read', 'admin'];
+    case 'manager': return ['ingest', 'read', 'admin'];
+    case 'consultant': return ['read'];
+    case 'farmer': return ['ingest', 'read'];
+    default: return ['read'];
   }
 }
 
-/**
- * Require specific scopes on the authenticated request.
- */
 export function requireScope(...required: string[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.scopes) {
-      res.status(401).json({ error: 'unauthenticated', message: 'Chưa xác thực' });
+      res.status(401).json({ error: 'unauthenticated' });
       return;
     }
-
     const hasAll = required.every((s) => req.scopes!.includes(s));
     if (!hasAll) {
-      res.status(403).json({
-        error: 'insufficient_scope',
-        message: `Cần quyền: ${required.join(', ')}`,
-      });
+      res.status(403).json({ error: 'insufficient_scope', message: `Cần quyền: ${required.join(', ')}` });
       return;
     }
-
     next();
   };
 }
 
-/**
- * Ensure the request's garden access matches the API key's garden restriction.
- */
 export function enforceGardenAccess(req: Request, res: Response, next: NextFunction): void {
   const requestedGarden = req.params.gardenId || req.body.garden_id || req.query.garden_id as string;
-
-  // If API key is restricted to a specific garden
   if (req.gardenId && requestedGarden && req.gardenId !== requestedGarden) {
-    res.status(403).json({
-      error: 'garden_access_denied',
-      message: 'Không có quyền truy cập nông trại này',
-    });
+    res.status(403).json({ error: 'garden_access_denied' });
     return;
   }
-
   next();
 }

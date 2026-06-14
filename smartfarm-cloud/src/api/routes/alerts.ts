@@ -6,6 +6,7 @@ import { Router, Request, Response } from 'express';
 import { authenticate, requireScope } from '../middleware/auth';
 import { createThresholdSchema } from '../../utils/validation';
 import * as alertService from '../../services/alert';
+import { SensorType } from '../../types';
 
 const router = Router();
 router.use(authenticate);
@@ -21,7 +22,10 @@ router.post('/thresholds', requireScope('admin'), async (req: Request, res: Resp
       return;
     }
 
-    const threshold = await alertService.createThreshold(req.tenantId!, parsed.data);
+    const threshold = await alertService.createThreshold(req.tenantId!, {
+      ...parsed.data,
+      sensor_type: parsed.data.sensor_type as SensorType,
+    });
     res.status(201).json(threshold);
   } catch (err) {
     throw err;

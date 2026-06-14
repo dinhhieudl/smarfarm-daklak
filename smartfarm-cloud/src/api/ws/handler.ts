@@ -8,11 +8,11 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
 import { IncomingMessage } from 'http';
-import { validateApiKey } from './auth';
-import { redisSub } from './redis';
-import { wsSubscriptionSchema } from '../utils/validation';
-import { SensorType } from '../types';
-import { logger } from '../utils/logger';
+import { validateApiKey } from '../../services/auth';
+import { redisSub } from '../../services/redis';
+import { wsSubscriptionSchema } from '../../utils/validation';
+import { SensorType } from '../../types';
+import { logger } from '../../utils/logger';
 
 interface WSClient {
   ws: WebSocket;

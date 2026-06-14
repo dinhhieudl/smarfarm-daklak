@@ -1,15 +1,12 @@
 // ============================================================================
-// SmartFarm Cloud - Sensor Data Ingestion Service
-// ============================================================================
-// This is the core data pipeline: receives batched data from edge agents,
-// validates it, stores in TimescaleDB, triggers alerts, and broadcasts via WS.
+// SmartFarm Cloud - Sensor Data Ingestion Service (Updated)
 // ============================================================================
 
 import { batchInsertReadings, query } from '../db/pool';
 import { getDeviceByEui, updateDeviceStatus } from './device';
 import { checkAlerts } from './alert';
 import { publish } from './redis';
-import { BatchSensorPayload, SensorReading, SensorType, SENSOR_UNITS } from '../types';
+import { BatchSensorPayload, SensorReading, SensorType, SENSOR_UNITS, SENSOR_RANGES } from '../types';
 import { logger } from '../utils/logger';
 
 interface ValidationResult {
@@ -21,11 +18,46 @@ interface ValidationResult {
 }
 
 /**
+ * Map legacy sensor type names to canonical types
+ */
+function normalizeSensorType(raw: string): SensorType {
+  const mapping: Record<string, SensorType> = {
+    'moisture': 'soil_moisture',
+    'temperature': 'air_temperature',
+    'ec': 'soil_ec',
+    'ph': 'soil_ph',
+    'temp': 'air_temperature',
+    'humidity': 'air_humidity',
+    'rain': 'rainfall',
+    'light': 'light_intensity',
+    'wind': 'wind_speed',
+    'leaf': 'leaf_wetness',
+    'soil_temp': 'soil_temperature',
+    'soil_moisture': 'soil_moisture',
+    'soil_temperature': 'soil_temperature',
+    'soil_ph': 'soil_ph',
+    'soil_ec': 'soil_ec',
+    'air_temperature': 'air_temperature',
+    'air_humidity': 'air_humidity',
+    'rainfall': 'rainfall',
+    'light_intensity': 'light_intensity',
+    'wind_speed': 'wind_speed',
+    'leaf_wetness': 'leaf_wetness',
+    'water_level': 'water_level',
+    'flow_rate': 'flow_rate',
+    'nitrogen': 'nitrogen',
+    'n': 'nitrogen',
+    'phosphorus': 'phosphorus',
+    'p': 'phosphorus',
+    'potassium': 'potassium',
+    'k': 'potassium',
+    'salinity': 'salinity',
+  };
+  return (mapping[raw.toLowerCase()] || raw) as SensorType;
+}
+
+/**
  * Validate and transform a batch payload into SensorReading objects.
- * - Verifies device exists and belongs to the claimed garden
- * - Verifies zones exist and belong to the garden
- * - Normalizes units
- * - Validates value ranges
  */
 export async function validateBatch(payload: BatchSensorPayload): Promise<ValidationResult> {
   const errors: string[] = [];
@@ -63,32 +95,35 @@ export async function validateBatch(payload: BatchSensorPayload): Promise<Valida
   const readings: SensorReading[] = [];
 
   for (const r of payload.readings) {
-    if (!validZoneIds.has(r.zone_id)) {
-      errors.push(`Invalid zone_id ${r.zone_id} for garden ${payload.garden_id}`);
-      continue;
+    // Zone validation (allow 'default' zone for edge agents)
+    if (r.zone_id !== 'default' && !validZoneIds.has(r.zone_id)) {
+      // Try to find or create a default zone
+      if (validZoneIds.size === 0) {
+        // No zones defined - skip zone validation
+      } else {
+        errors.push(`Invalid zone_id ${r.zone_id} for garden ${payload.garden_id}`);
+        continue;
+      }
     }
 
-    const expectedUnit = SENSOR_UNITS[r.sensor_type];
-    if (r.unit !== expectedUnit) {
-      errors.push(`Unit mismatch for ${r.sensor_type}: expected ${expectedUnit}, got ${r.unit}`);
-      continue;
-    }
+    // Normalize sensor type
+    const sensorType = normalizeSensorType(r.sensor_type);
+
+    // Get expected unit (fallback to provided unit)
+    const expectedUnit = SENSOR_UNITS[sensorType];
+    const unit = r.unit || expectedUnit || '';
 
     // Value range validation
-    const rangeError = validateSensorRange(r.sensor_type, r.value);
-    if (rangeError) {
-      errors.push(rangeError);
-      // Still insert but mark as suspect
-    }
+    const rangeError = validateSensorRange(sensorType, r.value);
 
     readings.push({
       time: new Date(r.timestamp),
       device_id: device.id,
       garden_id: payload.garden_id,
-      zone_id: r.zone_id,
-      sensor_type: r.sensor_type,
+      zone_id: r.zone_id === 'default' ? (zonesResult.rows[0]?.id || r.zone_id) : r.zone_id,
+      sensor_type: sensorType,
       value: r.value,
-      unit: r.unit,
+      unit: unit,
       quality: rangeError ? 'suspect' : (r.quality || 'good'),
       raw_value: r.raw_value,
       battery_voltage: r.battery_voltage,
@@ -109,41 +144,18 @@ export async function validateBatch(payload: BatchSensorPayload): Promise<Valida
  * Validate sensor value ranges (physical limits for soil sensors in coffee farms)
  */
 function validateSensorRange(sensorType: SensorType, value: number): string | null {
-  const ranges: Record<SensorType, [number, number]> = {
-    temperature: [-10, 60],       // °C
-    moisture: [0, 100],           // %
-    ec: [0, 20],                  // mS/cm
-    nitrogen: [0, 1000],          // mg/kg
-    phosphorus: [0, 500],         // mg/kg
-    potassium: [0, 2000],         // mg/kg
-    ph: [0, 14],                  // pH
-    salinity: [0, 50],            // g/L
-  };
+  const range = SENSOR_RANGES[sensorType];
+  if (!range) return null;
 
-  const [min, max] = ranges[sensorType];
+  const [min, max] = range;
   if (value < min || value > max) {
-    return `${sensor_type_label(sensorType)} value ${value} outside physical range [${min}, ${max}]`;
+    return `${sensorType} value ${value} outside physical range [${min}, ${max}]`;
   }
   return null;
 }
 
-function sensor_type_label(type: SensorType): string {
-  const labels: Record<SensorType, string> = {
-    temperature: 'Temperature',
-    moisture: 'Moisture',
-    ec: 'EC',
-    nitrogen: 'Nitrogen (N)',
-    phosphorus: 'Phosphorus (P)',
-    potassium: 'Potassium (K)',
-    ph: 'pH',
-    salinity: 'Salinity',
-  };
-  return labels[type] || type;
-}
-
 /**
  * Process a validated batch: store in DB, check alerts, broadcast updates.
- * This is the main ingestion pipeline.
  */
 export async function ingestBatch(
   payload: BatchSensorPayload
@@ -217,7 +229,6 @@ export async function ingestBatch(
 
 /**
  * Query sensor data for a specific garden/zone/time range.
- * Uses continuous aggregates for larger time ranges automatically.
  */
 export async function querySensorData(
   gardenId: string,
@@ -234,15 +245,13 @@ export async function querySensorData(
   const {
     zoneId,
     sensorType,
-    from = new Date(Date.now() - 86400000), // default: last 24h
+    from = new Date(Date.now() - 86400000),
     to = new Date(),
     granularity = 'raw',
     limit = 1000,
     offset = 0,
   } = options;
 
-  // Choose the right table/view based on granularity
-  let timeCol = 'time';
   let table = 'sensor_readings';
   let selectCols = 'time, zone_id, sensor_type, value, unit, quality';
 
@@ -253,11 +262,11 @@ export async function querySensorData(
     table = 'sensor_daily';
     selectCols = 'bucket as time, zone_id, sensor_type, avg_value as value, \'avg\' as unit, \'good\' as quality';
   } else if (granularity === '5m') {
-    // Downsample raw data to 5-minute buckets on the fly
     table = `(
       SELECT time_bucket('5 minutes', time) as time, zone_id, sensor_type,
              AVG(value) as value, 'avg' as unit, 'good' as quality
       FROM sensor_readings
+      WHERE garden_id = $1
       GROUP BY time_bucket('5 minutes', time), zone_id, sensor_type
     )`;
   }
@@ -266,7 +275,6 @@ export async function querySensorData(
   const params: any[] = [];
   let paramIdx = 1;
 
-  // For raw table, we use garden_id; for aggregates, same
   if (granularity === 'raw' || granularity === '5m') {
     if (granularity === 'raw') {
       conditions.push(`garden_id = $${paramIdx++}`);
@@ -286,7 +294,6 @@ export async function querySensorData(
     params.push(sensorType);
   }
 
-  // Time range
   conditions.push(`time >= $${paramIdx++}`);
   params.push(from);
   conditions.push(`time <= $${paramIdx++}`);
@@ -296,7 +303,6 @@ export async function querySensorData(
   const limitParam = paramIdx++;
   const offsetParam = paramIdx++;
 
-  // For 5m subquery, wrap it properly
   let sql: string;
   if (granularity === '5m') {
     sql = `

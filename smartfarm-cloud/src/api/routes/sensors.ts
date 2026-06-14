@@ -7,6 +7,7 @@ import { authenticate, requireScope, enforceGardenAccess } from '../middleware/a
 import { ingestionRateLimiter } from '../middleware/rateLimiter';
 import { batchSensorPayloadSchema, queryParamsSchema } from '../../utils/validation';
 import { ingestBatch, querySensorData } from '../../services/sensor';
+import { SensorType } from '../../types';
 
 const router = Router();
 router.use(authenticate);
@@ -43,7 +44,13 @@ router.post(
           continue;
         }
 
-        const result = await ingestBatch(parsed.data);
+        const result = await ingestBatch({
+          ...parsed.data,
+          readings: parsed.data.readings.map((r: any) => ({
+            ...r,
+            sensor_type: r.sensor_type as SensorType,
+          })),
+        });
         results.push({
           device_eui: parsed.data.device_eui,
           status: result.inserted > 0 ? 'ok' : 'error',
@@ -87,7 +94,7 @@ router.get('/data', enforceGardenAccess, async (req: Request, res: Response) => 
 
     const data = await querySensorData(targetGarden, {
       zoneId: zone_id,
-      sensorType: sensor_type,
+      sensorType: sensor_type as SensorType | undefined,
       from: from ? new Date(from) : undefined,
       to: to ? new Date(to) : undefined,
       granularity,

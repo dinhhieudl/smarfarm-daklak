@@ -65,10 +65,10 @@ export async function checkAlerts(readings: SensorReading[]): Promise<Alert[]> {
     const latest = groupReadings[groupReadings.length - 1];
     let breached = false;
 
-    if (threshold.min_value !== null && latest.value < threshold.min_value) {
+    if (threshold.min_value != null && latest.value < threshold.min_value) {
       breached = true;
     }
-    if (threshold.max_value !== null && latest.value > threshold.max_value) {
+    if (threshold.max_value != null && latest.value > threshold.max_value) {
       breached = true;
     }
 

@@ -2,7 +2,7 @@
 // SmartFarm Cloud - Database Connection Pool
 // ============================================================================
 
-import { Pool, PoolClient, QueryResult } from 'pg';
+import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
@@ -22,7 +22,7 @@ pool.on('connect', () => {
   logger.debug('New database connection established');
 });
 
-export async function query<T = any>(
+export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
@@ -67,7 +67,7 @@ export async function healthCheck(): Promise<boolean> {
   }
 }
 
-// TimescaleDB-specific: batch insert using COPY protocol for high throughput
+// TimescaleDB-specific: batch insert for high throughput
 export async function batchInsertReadings(
   readings: Array<{
     time: Date;
@@ -85,7 +85,6 @@ export async function batchInsertReadings(
 ): Promise<number> {
   if (readings.length === 0) return 0;
 
-  // Build multi-row INSERT (faster than individual inserts, compatible with hypertables)
   const values: any[] = [];
   const placeholders: string[] = [];
 

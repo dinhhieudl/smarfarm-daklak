@@ -57,7 +57,7 @@ export async function createApiKey(
     key_prefix: prefix,
     name,
     scopes,
-    expires_at: expiresAt,
+    expires_at: expiresAt || undefined,
     last_used_at: undefined,
     is_active: true,
     created_at: new Date(),

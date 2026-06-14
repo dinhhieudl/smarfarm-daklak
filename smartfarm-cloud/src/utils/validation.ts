@@ -1,19 +1,23 @@
 // ============================================================================
-// SmartFarm Cloud - Input Validation Schemas (Zod)
+// SmartFarm Cloud - Input Validation Schemas (Zod) - Updated
 // ============================================================================
 
 import { z } from 'zod';
 
 const sensorTypeEnum = z.enum([
-  'temperature', 'moisture', 'ec', 'nitrogen',
-  'phosphorus', 'potassium', 'ph', 'salinity',
+  'soil_moisture', 'soil_temperature', 'soil_ph', 'soil_ec',
+  'air_temperature', 'air_humidity', 'rainfall', 'light_intensity',
+  'wind_speed', 'leaf_wetness', 'water_level', 'flow_rate',
+  'nitrogen', 'phosphorus', 'potassium', 'salinity',
+  // Legacy names (accepted, mapped internally)
+  'temperature', 'moisture', 'ec', 'ph',
 ]);
 
 // --- Tenant ---
 export const createTenantSchema = z.object({
   name: z.string().min(1).max(255),
   email: z.string().email(),
-  plan: z.enum(['free', 'pro', 'enterprise']).default('free'),
+  plan: z.enum(['free', 'basic', 'pro', 'enterprise']).default('free'),
 });
 
 // --- Garden ---
@@ -42,9 +46,9 @@ export const createZoneSchema = z.object({
 export const createDeviceSchema = z.object({
   garden_id: z.string().uuid(),
   zone_id: z.string().uuid().optional(),
-  device_eui: z.string().length(16).regex(/^[0-9a-fA-F]+$/),
+  device_eui: z.string().min(8).max(32),
   name: z.string().min(1).max(255),
-  device_type: z.enum(['rpi_gateway', 'soil_sensor_node']),
+  device_type: z.enum(['rpi_gateway', 'soil_sensor_node', 'weather_station']),
   firmware_version: z.string().max(30).optional(),
 });
 
@@ -58,19 +62,19 @@ export const createApiKeySchema = z.object({
 
 // --- Batch Sensor Ingestion ---
 export const sensorReadingSchema = z.object({
-  zone_id: z.string().uuid(),
+  zone_id: z.string(),
   sensor_type: sensorTypeEnum,
   value: z.number(),
   unit: z.string().min(1).max(20),
   quality: z.enum(['good', 'suspect', 'bad']).default('good'),
   raw_value: z.number().optional(),
-  timestamp: z.string().datetime(),
+  timestamp: z.string(),
   battery_voltage: z.number().optional(),
   rssi: z.number().optional(),
 });
 
 export const batchSensorPayloadSchema = z.object({
-  device_eui: z.string().length(16).regex(/^[0-9a-fA-F]+$/),
+  device_eui: z.string().min(8).max(32),
   garden_id: z.string().uuid(),
   readings: z.array(sensorReadingSchema).min(1).max(5000),
 });
@@ -80,8 +84,8 @@ export const queryParamsSchema = z.object({
   garden_id: z.string().uuid().optional(),
   zone_id: z.string().uuid().optional(),
   sensor_type: sensorTypeEnum.optional(),
-  from: z.string().datetime().optional(),
-  to: z.string().datetime().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
   granularity: z.enum(['raw', '5m', '1h', '1d']).default('raw'),
   limit: z.coerce.number().int().positive().max(10000).default(1000),
   offset: z.coerce.number().int().min(0).default(0),
@@ -91,8 +95,8 @@ export const queryParamsSchema = z.object({
 export const analyticsQuerySchema = z.object({
   garden_ids: z.array(z.string().uuid()).optional(),
   sensor_type: sensorTypeEnum,
-  from: z.string().datetime(),
-  to: z.string().datetime(),
+  from: z.string(),
+  to: z.string(),
   aggregation: z.enum(['avg', 'min', 'max', 'percentile_95']).default('avg'),
   group_by: z.enum(['garden', 'zone', 'crop_type', 'none']).default('none'),
   compare_with: z.enum(['previous_period', 'same_period_last_year']).optional(),

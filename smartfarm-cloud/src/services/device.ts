@@ -17,7 +17,7 @@ export async function registerDevice(
   gardenId: string,
   deviceEui: string,
   name: string,
-  deviceType: 'rpi_gateway' | 'soil_sensor_node',
+  deviceType: 'rpi_gateway' | 'soil_sensor_node' | 'weather_station',
   zoneId?: string,
   firmwareVersion?: string
 ): Promise<Device> {

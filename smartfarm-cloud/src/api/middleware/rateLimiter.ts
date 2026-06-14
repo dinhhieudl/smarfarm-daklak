@@ -15,7 +15,7 @@ export function rateLimiter(limitOverride?: number) {
   const windowMs = config.rateLimit.windowMs;
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const key = req.headers['x-api-key'] as string || req.ip;
+    const key = (req.headers['x-api-key'] as string) || req.ip || 'unknown';
     const rateLimitKey = `ratelimit:${key.substring(0, 16)}`;
 
     const { allowed, remaining } = await checkRateLimit(rateLimitKey, limit, windowMs);

@@ -20,7 +20,10 @@ router.post('/query', requireScope('read'), async (req: Request, res: Response) 
       return;
     }
 
-    const result = await crossFarmAnalytics(req.tenantId!, parsed.data);
+    const result = await crossFarmAnalytics(req.tenantId!, {
+      ...parsed.data,
+      sensor_type: parsed.data.sensor_type as SensorType,
+    });
     res.json(result);
   } catch (err) {
     throw err;
