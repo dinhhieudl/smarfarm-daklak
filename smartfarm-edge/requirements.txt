@@ -1,0 +1,18 @@
+# SmartFarm Edge Agent - Python Dependencies
+# Core
+pyyaml>=6.0
+pyserial>=3.5
+
+# MQTT (choose one)
+paho-mqtt>=1.6.0
+# aiomqtt>=1.0.0  # async alternative
+
+# HTTP client (optional, falls back to urllib)
+# httpx>=0.25.0
+
+# Web dashboard
+flask>=3.0.0
+
+# LoRa / sensor reading
+# adafruit-circuitpython-rfm9x>=2.2.0  # for SPI LoRa modules
+# RPi.GPIO>=0.7.0                       # for GPIO sensors

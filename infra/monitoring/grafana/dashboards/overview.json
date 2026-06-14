@@ -1,0 +1,256 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "title": "System Overview",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false
+    },
+    {
+      "title": "Active Devices",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "expr": "count(agritech_device_last_seen_timestamp > (time() - 900))",
+          "legendFormat": "Active"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "green", "value": 10 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Readings / Hour",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [
+        {
+          "expr": "sum(rate(agritech_ingestion_total[1h])) * 3600",
+          "legendFormat": "Readings/hr"
+        }
+      ]
+    },
+    {
+      "title": "Ingestion Rate",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "targets": [
+        {
+          "expr": "rate(agritech_ingestion_total[5m])",
+          "legendFormat": "Readings/sec"
+        },
+        {
+          "expr": "rate(agritech_ingestion_errors_total[5m])",
+          "legendFormat": "Errors/sec"
+        }
+      ]
+    },
+    {
+      "title": "CPU Usage",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 5 },
+      "targets": [
+        {
+          "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "max": 100,
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "title": "Memory Usage",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 5 },
+      "targets": [
+        {
+          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "legendFormat": "Memory"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "max": 100,
+          "unit": "percent"
+        }
+      }
+    },
+    {
+      "title": "MQTT Broker",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "collapsed": false
+    },
+    {
+      "title": "MQTT Connections",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "expr": "emqx_connections_count",
+          "legendFormat": "Connections"
+        }
+      ]
+    },
+    {
+      "title": "MQTT Messages",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "targets": [
+        {
+          "expr": "rate(emqx_messages_received_total[5m])",
+          "legendFormat": "Received/sec"
+        },
+        {
+          "expr": "rate(emqx_messages_delivered_total[5m])",
+          "legendFormat": "Delivered/sec"
+        }
+      ]
+    },
+    {
+      "title": "MQTT Subscriptions",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "targets": [
+        {
+          "expr": "emqx_subscriptions_count",
+          "legendFormat": "Subscriptions"
+        }
+      ]
+    },
+    {
+      "title": "Database",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "collapsed": false
+    },
+    {
+      "title": "DB Connections",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 23 },
+      "targets": [
+        {
+          "expr": "pg_stat_activity_count",
+          "legendFormat": "Active connections"
+        }
+      ]
+    },
+    {
+      "title": "DB Size",
+      "type": "stat",
+      "datasource": { "type": "postgres", "uid": "timescaledb" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 23 },
+      "targets": [
+        {
+          "rawSql": "SELECT pg_size_pretty(hypertable_size('sensor_readings')) as size",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "title": "Query Duration",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 23 },
+      "targets": [
+        {
+          "expr": "rate(pg_stat_statements_mean_time_seconds[5m])",
+          "legendFormat": "Avg query time"
+        }
+      ]
+    },
+    {
+      "title": "Device Health",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false
+    },
+    {
+      "title": "Device Battery Levels",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        {
+          "expr": "agritech_device_battery_voltage",
+          "legendFormat": "{{ device_id }}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 3.2 },
+              { "color": "green", "value": 3.5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Sync Success Rate",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        {
+          "expr": "1 - (rate(agritech_sync_failures_total[1h]) / rate(agritech_sync_total[1h]))",
+          "legendFormat": "Success Rate"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "max": 1,
+          "min": 0,
+          "unit": "percentunit",
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.9 },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": ["agritech", "iot", "overview"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Asia/Ho_Chi_Minh",
+  "title": "AgriTech IoT Overview",
+  "uid": "agritech-overview",
+  "version": 1
+}

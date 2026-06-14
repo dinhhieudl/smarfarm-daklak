@@ -1,0 +1,58 @@
+# ============================================================
+# Dockerfile — Go API Server
+# Multi-stage build for small production image
+# ============================================================
+
+# Stage 1: Build
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy go mod files first (cache dependencies)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build
+ARG VERSION=dev
+ARG BUILD_TIME=unknown
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s -X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}" \
+    -o /app/api-server \
+    ./cmd/api
+
+# Stage 2: Production
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tzdata wget
+
+# Create non-root user
+RUN addgroup -g 1000 -S app && \
+    adduser -u 1000 -S app -G app
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/api-server .
+
+# Copy config and static files
+COPY --from=builder /app/config ./config
+COPY --from=builder /app/migrations ./migrations
+
+# Set ownership
+RUN chown -R app:app /app
+
+USER app
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD wget --spider -q http://localhost:8081/health || exit 1
+
+EXPOSE 8081
+
+ENTRYPOINT ["./api-server"]

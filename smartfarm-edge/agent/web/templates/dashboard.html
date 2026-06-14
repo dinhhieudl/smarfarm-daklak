@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartFarm - {{ farm_id }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+        .header { background: #2d5016; color: white; padding: 16px 24px; }
+        .header h1 { font-size: 20px; }
+        .header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card .label { font-size: 12px; color: #666; text-transform: uppercase; }
+        .stat-card .value { font-size: 28px; font-weight: bold; color: #2d5016; margin-top: 4px; }
+        .stat-card .unit { font-size: 14px; color: #999; }
+        .section { background: white; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .section h2 { font-size: 16px; margin-bottom: 12px; color: #2d5016; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #f9f9f9; font-weight: 600; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge-good { background: #e8f5e9; color: #2e7d32; }
+        .badge-suspect { background: #fff3e0; color: #ef6c00; }
+        .badge-warning { background: #fff3e0; color: #ef6c00; }
+        .badge-critical { background: #ffebee; color: #c62828; }
+        .badge-info { background: #e3f2fd; color: #1565c0; }
+        .sync-status { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+        .sync-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .sync-dot.online { background: #4caf50; }
+        .sync-dot.offline { background: #f44336; }
+        .btn { background: #2d5016; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #3d6b1e; }
+        .alert-row { border-left: 3px solid; }
+        .alert-row.warning { border-color: #ef6c00; }
+        .alert-row.critical { border-color: #c62828; }
+        .alert-row.info { border-color: #1565c0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌱 SmartFarm Dashboard</h1>
+        <div class="subtitle">Farm: {{ farm_id }} | Local Mode</div>
+    </div>
+
+    <div class="container">
+        <div class="stats-grid" id="stats">
+            <div class="stat-card">
+                <div class="label">Tổng readings</div>
+                <div class="value" id="total-readings">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Chưa đồng bộ</div>
+                <div class="value" id="unsynced">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Cảnh báo (24h)</div>
+                <div class="value" id="alerts-24h">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Trạng thái</div>
+                <div class="sync-status">
+                    <span class="sync-dot" id="sync-dot"></span>
+                    <span id="sync-status">Đang kiểm tra...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📊 Cảm biến gần nhất</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Loại cảm biến</th>
+                        <th>Giá trị</th>
+                        <th>Thời gian</th>
+                        <th>Chất lượng</th>
+                    </tr>
+                </thead>
+                <tbody id="sensor-table">
+                    <tr><td colspan="4">Đang tải...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>⚠️ Cảnh báo gần đây</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mức độ</th>
+                        <th>Thông báo</th>
+                        <th>Thời gian</th>
+                    </tr>
+                </thead>
+                <tbody id="alert-table">
+                    <tr><td colspan="3">Đang tải...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section" style="text-align: center;">
+            <button class="btn" onclick="triggerSync()">🔄 Đồng bộ ngay</button>
+        </div>
+    </div>
+
+    <script>
+        async function loadStats() {
+            try {
+                const resp = await fetch('/api/stats');
+                const data = await resp.json();
+                document.getElementById('total-readings').textContent = data.total_readings?.toLocaleString() || '0';
+                document.getElementById('unsynced').textContent = data.unsynced_readings?.toLocaleString() || '0';
+                document.getElementById('alerts-24h').textContent = data.alerts_24h || '0';
+
+                // Sensor table
+                const tbody = document.getElementById('sensor-table');
+                if (data.sensors && data.sensors.length > 0) {
+                    tbody.innerHTML = data.sensors.map(s => `
+                        <tr>
+                            <td>${s.sensor_type}</td>
+                            <td><strong>${s.latest}</strong></td>
+                            <td>${s.last_ts ? new Date(s.last_ts).toLocaleString('vi-VN') : '--'}</td>
+                            <td><span class="badge badge-good">${s.count} readings</span></td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="4">Chưa có dữ liệu</td></tr>';
+                }
+            } catch (e) {
+                console.error('Stats load error:', e);
+            }
+        }
+
+        async function loadAlerts() {
+            try {
+                const resp = await fetch('/api/alerts?limit=20');
+                const data = await resp.json();
+                const tbody = document.getElementById('alert-table');
+                if (data.data && data.data.length > 0) {
+                    tbody.innerHTML = data.data.map(a => `
+                        <tr class="alert-row ${a.severity}">
+                            <td><span class="badge badge-${a.severity}">${a.severity}</span></td>
+                            <td>${a.message}</td>
+                            <td>${new Date(a.created_at).toLocaleString('vi-VN')}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="3">Không có cảnh báo</td></tr>';
+                }
+            } catch (e) {
+                console.error('Alerts load error:', e);
+            }
+        }
+
+        async function triggerSync() {
+            try {
+                const resp = await fetch('/api/sync/trigger', { method: 'POST' });
+                const data = await resp.json();
+                alert(data.message || 'Đã gửi yêu cầu đồng bộ');
+            } catch (e) {
+                alert('Lỗi: ' + e.message);
+            }
+        }
+
+        // Load on start
+        loadStats();
+        loadAlerts();
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => { loadStats(); loadAlerts(); }, 30000);
+    </script>
+</body>
+</html>

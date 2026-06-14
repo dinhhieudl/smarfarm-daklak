@@ -1,0 +1,99 @@
+{
+  "apiVersion": "3",
+  "datasources": [
+    {
+      "name": "Edge Sync Logs",
+      "type": "loki",
+      "url": "http://localhost:3100",
+      "access": "proxy",
+      "uid": "edge-logs"
+    }
+  ],
+  "panels": [
+    {
+      "title": "Sync Throughput",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(edge_sync_readings_total[5m])",
+          "legendFormat": "readings/sec"
+        }
+      ]
+    },
+    {
+      "title": "Queue Depth",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "edge_queue_pending",
+          "legendFormat": "pending"
+        },
+        {
+          "expr": "edge_queue_failed",
+          "legendFormat": "failed"
+        }
+      ]
+    },
+    {
+      "title": "Upload Success Rate",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "edge_upload_success_rate * 100",
+          "legendFormat": "success %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "value": 0, "color": "red" },
+              { "value": 80, "color": "yellow" },
+              { "value": 95, "color": "green" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Network Status",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        {
+          "expr": "edge_network_online",
+          "legendFormat": "online"
+        }
+      ]
+    },
+    {
+      "title": "Memory Usage (MB)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "edge_memory_rss_mb",
+          "legendFormat": "RSS"
+        }
+      ]
+    },
+    {
+      "title": "Last Sync Age",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        {
+          "expr": "time() - edge_last_sync_timestamp",
+          "legendFormat": "seconds ago"
+        }
+      ]
+    }
+  ],
+  "title": "Edge Sync Agent",
+  "uid": "edge-sync-agent"
+}

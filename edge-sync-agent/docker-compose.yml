@@ -1,0 +1,78 @@
+# SmartFarm Edge Stack - Development Environment
+# Use this to test the edge agent locally
+
+version: "3.8"
+
+services:
+  # InfluxDB - time-series database for sensor data
+  influxdb:
+    image: influxdb:2.7
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: smartfarm123
+      DOCKER_INFLUXDB_INIT_ORG: smartfarm
+      DOCKER_INFLUXDB_INIT_BUCKET: sensors
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: my-super-secret-token
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Mosquitto MQTT broker
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto-data:/mosquitto/data
+    command: mosquitto -c /mosquitto/config/mosquitto.conf
+
+  # Grafana - monitoring dashboards
+  grafana:
+    image: grafana/grafana:10.0.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/edge-sync.json
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: smartfarm123
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/edge-sync.json
+
+  # Edge Sync Agent
+  edge-sync-agent:
+    build: .
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    volumes:
+      - agent-data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      NODE_ENV: production
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: my-super-secret-token
+      INFLUXDB_ORG: smartfarm
+      INFLUXDB_BUCKET: sensors
+      DEVICE_ID: dev-rpi-001
+      LOG_LEVEL: debug
+    deploy:
+      resources:
+        limits:
+          memory: 80M
+          cpus: "0.5"
+    restart: unless-stopped
+
+volumes:
+  influxdb-data:
+  mosquitto-data:
+  grafana-data:
+  agent-data:

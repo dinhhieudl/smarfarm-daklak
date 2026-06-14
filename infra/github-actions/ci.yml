@@ -1,0 +1,211 @@
+# ============================================================
+# CI Pipeline — Build, Test, Push
+# Triggers on: push to main, PRs, tags
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKER_REGISTRY: ghcr.io
+  DOCKER_IMAGE_PREFIX: ${{ github.repository_owner }}/agritech
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # ============================================================
+  # Lint & Test — Go services
+  # ============================================================
+  test:
+    name: Test Go Services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [ingestion-worker, api-server]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+          cache-dependency-path: services/${{ matrix.service }}/go.sum
+
+      - name: Run linter
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: services/${{ matrix.service }}
+
+      - name: Run tests
+        working-directory: services/${{ matrix.service }}
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out
+
+      - name: Upload coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: services/${{ matrix.service }}/coverage.out
+
+  # ============================================================
+  # Build & Push Docker Images
+  # ============================================================
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    strategy:
+      matrix:
+        service: [ingestion-worker, api-server]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ github.sha }}
+            BUILD_TIME=${{ github.event.head_commit.timestamp }}
+
+  # ============================================================
+  # Database Migration Check
+  # ============================================================
+  migration-check:
+    name: Validate DB Migrations
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: timescale/timescaledb:latest-pg15
+        env:
+          POSTGRES_DB: agritech_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run migrations
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: agritech_test
+          DB_USER: test
+          DB_PASSWORD: test
+        run: |
+          # Run init.sql against test database
+          psql -h localhost -U test -d agritech_test -f docker/postgres/init.sql
+          echo "Migrations applied successfully"
+
+      - name: Verify schema
+        env:
+          PGPASSWORD: test
+        run: |
+          # Verify key tables exist
+          TABLES=$(psql -h localhost -U test -d agritech_test -t -c \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';")
+          echo "Tables found: $TABLES"
+          
+          # Verify hypertable
+          HYPERTABLES=$(psql -h localhost -U test -d agritech_test -t -c \
+            "SELECT count(*) FROM timescaledb_information.hypertables;")
+          echo "Hypertables found: $HYPERTABLES"
+
+  # ============================================================
+  # Terraform Plan (on PRs)
+  # ============================================================
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform
+        run: terraform plan -no-color
+        continue-on-error: true
+
+      - name: Comment Plan on PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            // Post terraform plan output as PR comment
+            const plan = require('fs').readFileSync('/tmp/tfplan.txt', 'utf8');
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '## Terraform Plan\n```\n' + plan.substring(0, 60000) + '\n```'
+            });

@@ -1,0 +1,264 @@
+# ============================================================
+# Prometheus Alert Rules — IoT AgriTech Platform
+# ============================================================
+
+groups:
+  # -----------------------------------------------------------
+  # Infrastructure Alerts
+  # -----------------------------------------------------------
+  - name: infrastructure
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% for 10 minutes (current: {{ $value }}%)"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 85% (current: {{ $value }}%)"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 20
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk space is below 20% (current: {{ $value }}%)"
+
+      - alert: InstanceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} is down"
+          description: "{{ $labels.job }} has been down for more than 2 minutes"
+
+  # -----------------------------------------------------------
+  # Database Alerts
+  # -----------------------------------------------------------
+  - name: database
+    rules:
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL instance {{ $labels.instance }} is not responding"
+
+      - alert: HighDatabaseConnections
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High database connections"
+          description: "Database has {{ $value }} active connections (threshold: 80)"
+
+      - alert: SlowQueries
+        expr: rate(pg_stat_statements_mean_time_seconds[5m]) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow database queries detected"
+          description: "Average query time is {{ $value }}s"
+
+      - alert: DatabaseReplicationLag
+        expr: pg_replication_lag > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database replication lag"
+          description: "Replication lag is {{ $value }} seconds"
+
+      - alert: TimescaleDBCompressionFailing
+        expr: timescaledb_compression_chunk_count == 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TimescaleDB compression may be failing"
+          description: "No compressed chunks found — compression policy may not be running"
+
+  # -----------------------------------------------------------
+  # MQTT / EMQX Alerts
+  # -----------------------------------------------------------
+  - name: mqtt
+    rules:
+      - alert: EMQXDown
+        expr: emqx_running == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "EMQX MQTT broker is down"
+          description: "EMQX broker is not responding"
+
+      - alert: HighMQTTConnections
+        expr: emqx_connections_count > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High MQTT connection count"
+          description: "EMQX has {{ $value }} connections"
+
+      - alert: MQTTMessageRateHigh
+        expr: rate(emqx_messages_received_total[5m]) > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High MQTT message rate"
+          description: "Receiving {{ $value }} messages/sec"
+
+  # -----------------------------------------------------------
+  # Application / Ingestion Alerts
+  # -----------------------------------------------------------
+  - name: application
+    rules:
+      - alert: IngestionWorkerDown
+        expr: up{job="ingestion-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ingestion worker is down"
+          description: "The Go ingestion worker is not responding"
+
+      - alert: HighIngestionLatency
+        expr: histogram_quantile(0.95, rate(agritech_ingestion_duration_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High ingestion latency"
+          description: "P95 ingestion latency is {{ $value }}s"
+
+      - alert: IngestionErrorRate
+        expr: rate(agritech_ingestion_errors_total[5m]) / rate(agritech_ingestion_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High ingestion error rate"
+          description: "Error rate is {{ $value | humanizePercentage }}"
+
+      - alert: IngestionBacklog
+        expr: agritech_ingestion_queue_size > 10000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ingestion backlog growing"
+          description: "Queue size is {{ $value }}"
+
+  # -----------------------------------------------------------
+  # Device Health Alerts
+  # -----------------------------------------------------------
+  - name: devices
+    rules:
+      - alert: DeviceOffline
+        expr: (time() - agritech_device_last_seen_timestamp) > 900  # 15 min
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Device {{ $labels.device_id }} is offline"
+          description: "Device {{ $labels.device_id }} at farm {{ $labels.farm_name }} has not reported in 15+ minutes"
+
+      - alert: DeviceBatteryLow
+        expr: agritech_device_battery_voltage < 3.2
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low battery on device {{ $labels.device_id }}"
+          description: "Battery voltage is {{ $value }}V"
+
+      - alert: DeviceSignalWeak
+        expr: agritech_device_signal_strength < -80
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Weak signal on device {{ $labels.device_id }}"
+          description: "Signal strength is {{ $value }} dBm"
+
+      - alert: HighSyncFailureRate
+        expr: rate(agritech_sync_failures_total[1h]) / rate(agritech_sync_total[1h]) > 0.1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High sync failure rate"
+          description: "{{ $value | humanizePercentage }} of syncs are failing"
+
+      - alert: FarmDataGap
+        expr: (time() - agritech_farm_last_reading_timestamp) > 3600  # 1 hour
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No data from farm {{ $labels.farm_name }}"
+          description: "Farm {{ $labels.farm_name }} has not reported data for over 1 hour"
+
+  # -----------------------------------------------------------
+  # SSL Certificate Alerts
+  # -----------------------------------------------------------
+  - name: ssl
+    rules:
+      - alert: SSLCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 2592000  # 30 days
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+      - alert: SSLCertExpiryCritical
+        expr: probe_ssl_earliest_cert_expiry - time() < 604800  # 7 days
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSL certificate expiring critical"
+          description: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}"
+
+  # -----------------------------------------------------------
+  # Backup Alerts
+  # -----------------------------------------------------------
+  - name: backups
+    rules:
+      - alert: BackupAgeTooOld
+        expr: (time() - agritech_backup_last_success_timestamp) > 172800  # 48 hours
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database backup is too old"
+          description: "Last successful backup was {{ $value | humanizeDuration }} ago"
+
+      - alert: BackupFailed
+        expr: agritech_backup_last_status == 0
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database backup failed"
+          description: "The last backup job failed"

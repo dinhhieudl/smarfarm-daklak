@@ -1,0 +1,96 @@
+# ============================================================================
+# SmartFarm Cloud - Docker Compose (Full Stack)
+# ============================================================================
+# docker compose up -d
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # --- PostgreSQL + TimescaleDB ---
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: smartfarm-timescaledb
+    environment:
+      POSTGRES_DB: smartfarm_cloud
+      POSTGRES_USER: smartfarm
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-smartfarm_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartfarm -d smartfarm_cloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- Redis ---
+  redis:
+    image: redis:7-alpine
+    container_name: smartfarm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # --- Mosquitto MQTT Broker ---
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: smartfarm-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"   # WebSocket port
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    restart: unless-stopped
+
+  # --- SmartFarm Cloud API ---
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartfarm-api
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://smartfarm:${DB_PASSWORD:-smartfarm_dev}@timescaledb:5432/smartfarm_cloud
+      DB_POOL_SIZE: 20
+      REDIS_URL: redis://redis:6379
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MQTT_USERNAME: ${MQTT_USERNAME:-cloud_ingest}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-mqtt_dev_password}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production-64-chars-min}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      LOG_LEVEL: info
+    ports:
+      - "3000:3000"
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  timescaledb_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_log:

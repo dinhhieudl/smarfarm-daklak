@@ -1,0 +1,28 @@
+[Unit]
+Description=SmartFarm Edge Agent - IoT sensor data collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smartfarm
+Group=smartfarm
+WorkingDirectory=/opt/smartfarm-edge
+ExecStart=/opt/smartfarm-edge/venv/bin/python -m agent.main
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=SMARTFARM_CONFIG=/etc/smartfarm/config.yaml
+Environment=PYTHONUNBUFFERED=1
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/smartfarm /var/log/smartfarm
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

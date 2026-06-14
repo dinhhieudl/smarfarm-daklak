@@ -1,0 +1,25 @@
+# ============================================================
+# Example Terraform Variables
+# Copy to terraform.tfvars and fill in your values
+# ============================================================
+
+project_name = "agritech"
+environment  = "production"
+aws_region   = "ap-southeast-1"
+vpc_cidr     = "10.0.0.0/16"
+
+# EC2
+app_instance_type  = "t3.medium"
+app_instance_count = 1
+ssh_key_name       = "agritech-keypair"
+
+# Database
+db_name     = "agritech"
+db_username = "agritech_admin"
+db_password = "CHANGE_ME_STRONG_PASSWORD_HERE"
+
+# TLS Certificate (from AWS Certificate Manager)
+acm_certificate_arn = "arn:aws:acm:ap-southeast-1:ACCOUNT_ID:certificate/CERT_ID"
+
+# Alerts
+alert_email = "ops@yourcompany.com"

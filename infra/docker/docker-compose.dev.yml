@@ -1,0 +1,100 @@
+# ============================================================
+# Development Docker Compose
+# For local development and testing
+# ============================================================
+
+version: "3.9"
+
+services:
+  # EMQX — MQTT Broker (development)
+  emqx:
+    image: emqx/emqx:5.5.1
+    container_name: agritech-emqx-dev
+    ports:
+      - "1883:1883"
+      - "18083:18083"
+    environment:
+      EMQX_NAME: dev-mqtt
+      EMQX_ALLOW_ANONYMOUS: "true"
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: public
+    networks:
+      - dev-net
+
+  # TimescaleDB
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: agritech-timescaledb-dev
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: agritech
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - timescaledb_dev:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - dev-net
+
+  # Redis (for caching in development)
+  redis:
+    image: redis:7-alpine
+    container_name: agritech-redis-dev
+    ports:
+      - "6379:6379"
+    networks:
+      - dev-net
+
+  # MinIO (S3-compatible local storage)
+  minio:
+    image: minio/minio:latest
+    container_name: agritech-minio-dev
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_dev:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - dev-net
+
+  # Prometheus (development monitoring)
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: agritech-prometheus-dev
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+    networks:
+      - dev-net
+
+  # Grafana (development dashboards)
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: agritech-grafana-dev
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_dev:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - dev-net
+
+networks:
+  dev-net:
+    driver: bridge
+
+volumes:
+  timescaledb_dev:
+  minio_dev:
+  grafana_dev:

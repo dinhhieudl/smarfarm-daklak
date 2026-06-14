@@ -1,0 +1,83 @@
+# SmartFarm Edge Agent Configuration
+# Copy to /etc/smartfarm/config.yaml and edit
+
+# Farm identity (required)
+farm_id: "your-farm-uuid-here"
+device_id: "rpi_001"
+cloud_api_key: "sf_your_api_key_here"
+
+# Cloud endpoints
+cloud_api_url: "https://api.smartfarm.vn/v1"
+mqtt_broker: "mqtt://mqtt.smartfarm.vn:1883"
+mqtt_username: ""
+mqtt_password: ""
+
+# Local storage
+db_path: "/var/smartfarm/data/readings.db"
+buffer_days: 7
+
+# Sync settings
+sync_interval: 3600        # seconds between batch uploads (1 hour)
+sync_batch_size: 500       # max readings per batch
+sync_max_retries: 3
+
+# LoRa settings
+lora_port: "/dev/ttyUSB0"
+lora_baud: 115200
+
+# Sensor reading interval
+read_interval: 600         # 10 minutes
+
+# Sensors connected to this RPi
+sensors:
+  - id: "soil_01"
+    type: "soil_moisture"
+    field_id: "field-north"
+    lora_address: "0x01"
+  - id: "soil_02"
+    type: "soil_moisture"
+    field_id: "field-south"
+    lora_address: "0x02"
+  - id: "temp_01"
+    type: "air_temperature"
+    field_id: "field-north"
+    lora_address: "0x03"
+  - id: "hum_01"
+    type: "air_humidity"
+    field_id: "field-north"
+    lora_address: "0x04"
+  - id: "rain_01"
+    type: "rainfall"
+    field_id: "field-north"
+    lora_address: "0x05"
+  - id: "ph_01"
+    type: "soil_ph"
+    field_id: "field-south"
+    lora_address: "0x06"
+
+# Web dashboard
+web_port: 8080
+web_enabled: true
+
+# SMS alerts
+sms_enabled: false
+sms_provider: "console"    # console, serial
+sms_phone: "+84901234567"
+sms_serial_port: "/dev/ttyUSB1"
+
+# Alert thresholds (override defaults)
+alert_thresholds:
+  soil_moisture:
+    min: 20
+    max: 85
+    severity: "warning"
+  air_temperature:
+    min: 10
+    max: 38
+    severity: "critical"
+  rainfall:
+    max: 100
+    severity: "warning"
+
+# Timezone
+timezone: "Asia/Ho_Chi_Minh"

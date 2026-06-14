@@ -1,0 +1,47 @@
+{
+  "name": "smartfarm-cloud",
+  "version": "1.0.0",
+  "description": "SmartFarm AgriTech Cloud Backend - IoT data aggregation platform",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts",
+    "test": "vitest run",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.16.0",
+    "pg": "^8.12.0",
+    "ioredis": "^5.3.2",
+    "mqtt": "^5.3.4",
+    "zod": "^3.22.4",
+    "jsonwebtoken": "^9.0.2",
+    "bcrypt": "^5.1.1",
+    "uuid": "^9.0.0",
+    "pino": "^8.17.2",
+    "pino-pretty": "^10.3.1",
+    "helmet": "^7.1.0",
+    "cors": "^2.8.5",
+    "express-rate-limit": "^7.1.5",
+    "date-fns": "^3.3.1",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0",
+    "@types/express": "^4.17.21",
+    "@types/ws": "^8.5.10",
+    "@types/pg": "^8.10.9",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/bcrypt": "^5.0.2",
+    "@types/uuid": "^9.0.7",
+    "@types/cors": "^2.8.17",
+    "@types/node": "^20.11.5",
+    "vitest": "^1.2.2",
+    "eslint": "^8.56.0"
+  }
+}

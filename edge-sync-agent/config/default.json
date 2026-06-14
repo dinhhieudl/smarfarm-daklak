@@ -1,0 +1,45 @@
+{
+  "influxdb": {
+    "url": "http://localhost:8086",
+    "token": "",
+    "org": "smartfarm",
+    "bucket": "sensors",
+    "measurement": "soil"
+  },
+  "cloud": {
+    "endpoint": "https://api.smartfarm.vn/v1/sync",
+    "mqttEndpoint": "mqtts://mqtt.smartfarm.vn:8883",
+    "mqttTopic": "farm/{deviceId}/sensors",
+    "apiKey": "",
+    "deviceId": "rpi-edge-001"
+  },
+  "sync": {
+    "intervalMs": 300000,
+    "batchSize": 100,
+    "maxRetries": 5,
+    "initialBackoffMs": 1000,
+    "maxBackoffMs": 300000,
+    "compressionEnabled": true,
+    "protocol": "https"
+  },
+  "queue": {
+    "dbPath": "./data/sync-queue.db",
+    "maxSize": 50000,
+    "retentionDays": 30
+  },
+  "health": {
+    "intervalMs": 60000,
+    "endpoint": "https://api.smartfarm.vn/v1/health"
+  },
+  "ota": {
+    "checkIntervalMs": 3600000,
+    "endpoint": "https://api.smartfarm.vn/v1/ota/check",
+    "downloadDir": "./data/ota"
+  },
+  "logging": {
+    "level": "info",
+    "file": "./data/logs/edge-sync.log",
+    "maxSizeMb": 10,
+    "maxFiles": 3
+  }
+}

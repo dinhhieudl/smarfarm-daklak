@@ -1,0 +1,168 @@
+# AgriTech Coffee Farm Analytics Platform
+# Local development stack
+
+services:
+  # ============================================================
+  # Database — TimescaleDB (PostgreSQL + time-series extensions)
+  # ============================================================
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: agritech-db
+    environment:
+      POSTGRES_DB: agritech
+      POSTGRES_USER: agritech
+      POSTGRES_PASSWORD: agritech
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agritech"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Message Broker — Kafka (via KRaft, no Zookeeper needed)
+  # ============================================================
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: agritech-kafka
+    environment:
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafkadata:/bitnami/kafka
+
+  # ============================================================
+  # MQTT Broker — Eclipse Mosquitto
+  # ============================================================
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: agritech-mqtt
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquittodata:/mosquitto/data
+
+  # ============================================================
+  # Cache — Redis
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: agritech-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  # ============================================================
+  # Analytics API — FastAPI
+  # ============================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: agritech-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://agritech:agritech@timescaledb:5432/agritech
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kafka:
+        condition: service_started
+
+  # ============================================================
+  # Ingestion Pipeline — MQTT → Kafka
+  # ============================================================
+  ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    container_name: agritech-ingestion
+    command: python pipeline/ingestion.py
+    environment:
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      - mosquitto
+      - kafka
+
+  # ============================================================
+  # Consumer — Kafka → TimescaleDB
+  # ============================================================
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    container_name: agritech-consumer
+    command: python pipeline/consumer.py
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      DATABASE_URL: postgresql://agritech:agritech@timescaledb:5432/agritech
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  # ============================================================
+  # Alert Engine — periodic evaluation
+  # ============================================================
+  alerting:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    container_name: agritech-alerting
+    command: >
+      sh -c "while true; do python -c 'from alerting.engine import AlertEngine; e = AlertEngine(); e.run_evaluation_cycle(); e.close()'; sleep 300; done"
+    environment:
+      DATABASE_URL: postgresql://agritech:agritech@timescaledb:5432/agritech
+      REDIS_URL: redis://redis:6379/0
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # ============================================================
+  # Dashboard — Grafana (optional, for visualization)
+  # ============================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: agritech-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: agritech
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./config/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    depends_on:
+      - timescaledb
+
+volumes:
+  pgdata:
+  kafkadata:
+  mosquittodata:
+  redisdata:
+  grafanadata:

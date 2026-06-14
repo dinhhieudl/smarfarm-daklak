@@ -1,0 +1,54 @@
+[Unit]
+Description=SmartFarm Edge Sync Agent
+Documentation=https://docs.smartfarm.vn/edge-agent
+After=network-online.target influxdb.service mosquitto.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=smartfarm
+Group=smartfarm
+WorkingDirectory=/opt/edge-sync-agent
+
+# Environment
+EnvironmentFile=-/opt/edge-sync-agent/.env
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=64
+
+# Command
+ExecStart=/usr/bin/node dist/index.js
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=always
+RestartSec=30
+
+# Resource limits (critical for RPi)
+MemoryMax=80M
+MemoryHigh=60M
+CPUQuota=25%
+TasksMax=32
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/edge-sync-agent/data
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=edge-sync-agent
+
+[Install]
+WantedBy=multi-user.target
