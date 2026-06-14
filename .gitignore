@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Credentials (NEVER commit these)
+*.pem
+*.key
+credentials/
+.git-credentials
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data
+*.db
+*.sqlite
+*.sqlite3
+
+# OpenClaw internal
+.openclaw/
+
+# SmartFarm edge data
+smartfarm-edge/data/
+smartfarm-edge/readings.db
