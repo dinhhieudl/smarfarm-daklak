@@ -62,6 +62,8 @@
       <button class="tab-btn" data-tab="tab-rules" data-role="admin">⚙️ Quy tắc tưới</button>
       <button class="tab-btn" data-tab="tab-history" data-role="viewer">📋 Nhật ký</button>
       <button class="tab-btn" data-tab="tab-charts" data-role="viewer">📈 Biểu đồ</button>
+      <button class="tab-btn" data-tab="tab-map" data-role="viewer">🗺️ Bản đồ</button>
+      <button class="tab-btn" data-tab="tab-activities" data-role="operator">📝 Nhật ký</button>
     </div>
 
     <!-- Tab: Dashboard -->
@@ -111,6 +113,16 @@
       <div class="chart-loading">⏳ Đang tải dữ liệu...</div>
     </div>
 
+    <!-- Tab: Farm Map -->
+    <div class="tab-content" id="tab-map">
+      <div class="chart-loading">⏳ Đang tải bản đồ...</div>
+    </div>
+
+    <!-- Tab: Activity Log -->
+    <div class="tab-content" id="tab-activities">
+      <div class="chart-loading">⏳ Đang tải nhật ký...</div>
+    </div>
+
     <!-- Footer -->
     <div class="footer">
       SmartFarm DakLak — Smart Control & Advisory &bull; MQTT → ChirpStack → Control Service → Actuators
@@ -126,6 +138,8 @@
   <script src="/js/advisory.js"></script>
   <script src="/js/audit.js"></script>
   <script src="/js/charts.js"></script>
+  <script src="/js/farm-map.js"></script>
+  <script src="/js/activity-log.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

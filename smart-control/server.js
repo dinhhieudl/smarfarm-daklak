@@ -17,6 +17,8 @@ const { getWeather, refreshWeather, getCachedWeather } = require('./lib/weather'
 const scheduler = require('./lib/scheduler');
 const auditModule = require('./lib/audit');
 const alertsModule = require('./lib/alerts');
+const activityLog = require('./lib/activity-log');
+const telegram = require('./lib/telegram');
 const { apiLimiter, authLimiter, controlLimiter, exportLimiter } = require('./lib/rate-limiter');
 
 const app = express();
@@ -647,7 +649,21 @@ cronJobs.push(cron.schedule('*/5 * * * *', () => {
   ZONES.forEach(zone => {
     const advisory = generateAdvisory(zone);
     io.emit('advisory', { zoneId: zone.id, ...advisory });
+
+    // Send Telegram alerts for critical/warning advisories
+    if (advisory.urgency === 'critical' || advisory.urgency === 'warning') {
+      const urgentAdvice = advisory.advices.find(a => a.type === 'irrigation' || a.type === 'salinity' || a.type === 'temperature');
+      if (urgentAdvice) {
+        telegram.sendAlert(advisory.urgency, urgentAdvice.message, urgentAdvice.action || '', zone.name).catch(() => {});
+      }
+    }
   });
+}));
+
+// Daily summary at 7:00 AM
+cronJobs.push(cron.schedule('0 7 * * *', () => {
+  telegram.sendDailySummary(ZONES, zoneSensorData, weatherData, null).catch(() => {});
+  console.log('[Cron] Daily summary sent to Telegram');
 }));
 
 // ─── WebSocket (Socket.IO) ────────────────────────────
@@ -1095,6 +1111,56 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ─── Activity Log API ─────────────────────────────────
+
+app.get('/api/activities', (req, res) => {
+  const { zoneId, type, from, to, limit } = req.query;
+  const activities = activityLog.getActivities({
+    zoneId, type, from, to,
+    limit: Math.min(parseInt(limit) || 50, 500)
+  });
+  res.json(activities);
+});
+
+app.post('/api/activities', authorize('admin', 'operator'), (req, res) => {
+  const { type, zoneId, title, description, quantity, unit, product, cost } = req.body || {};
+  if (!title || typeof title !== 'string') {
+    return res.status(400).json({ error: 'Title is required', code: 'MISSING_TITLE' });
+  }
+  const activity = activityLog.addActivity({
+    type, zoneId, title: title.trim(),
+    description: description?.trim(), quantity, unit,
+    product: product?.trim(), cost,
+    user: req.user?.username || 'unknown'
+  });
+
+  // Notify via Telegram
+  const zone = ZONES.find(z => z.id === zoneId);
+  telegram.sendActivityNotification(activity, zone?.name).catch(() => {});
+
+  // Emit via Socket.IO
+  io.emit('activity_new', activity);
+
+  res.json(activity);
+});
+
+app.delete('/api/activities/:id', authorize('admin'), (req, res) => {
+  const ok = activityLog.deleteActivity(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Activity not found', code: 'NOT_FOUND' });
+  res.json({ success: true });
+});
+
+app.get('/api/activities/stats', (req, res) => {
+  const days = Math.min(parseInt(req.query.days) || 30, 365);
+  res.json(activityLog.getStats(days));
+});
+
+// ─── Telegram Status API ──────────────────────────────
+
+app.get('/api/telegram/status', (req, res) => {
+  res.json(telegram.getStatus());
+});
+
 // ─── Error Handler ────────────────────────────────────
 app.use((err, req, res, _next) => {
   console.error('[Express] Unhandled error:', err);
@@ -1134,4 +1200,6 @@ server.listen(PORT, () => {
   updateWeather();
   influx.init();
   auditModule.init();
+  activityLog.init();
+  telegram.init();
 });

@@ -20,6 +20,9 @@ SmartFarm DakLak là hệ thống giám sát và điều khiển tự động ch
 - 🧠 **Tư vấn cây trồng** — Giai đoạn cà phê Robusta/Arabica (6 giai đoạn)
 - 🌤️ **Tích hợp thời tiết** — Dự báo DakLak + ảnh hưởng tưới
 - 📊 **Dashboard trực quan** — Grafana + Dashboard tùy chỉnh thời gian thực
+- 🗺️ **Bản đồ nông trại** — Hiển thị layout khu vực + dữ liệu cảm biến thời gian thực
+- 📝 **Nhật ký hoạt động** — Ghi nhận trồng, bón phân, phun thuốc, thu hoạch
+- 📱 **Thông báo Telegram** — Cảnh báo sự cố + báo cáo hàng ngày qua Telegram
 
 ---
 
@@ -167,8 +170,26 @@ smartfarm-daklak/
 │   ├── package.json
 │   ├── Dockerfile
 │   ├── .dockerignore
+│   ├── lib/
+│   │   ├── activity-log.js      # 📝 Farm activity journal
+│   │   ├── telegram.js          # 📱 Telegram notifications
+│   │   ├── advisory.js          # Crop advisory engine
+│   │   ├── alerts.js            # Alert/notification system
+│   │   ├── eto.js               # ET₀ calculation (FAO-56)
+│   │   ├── irrigation.js        # Irrigation logic
+│   │   ├── predictive-irrigation.js
+│   │   ├── scheduler.js         # Multi-zone scheduling
+│   │   ├── weather.js           # Open-Meteo integration
+│   │   └── ...
 │   └── public/
-│       └── index.html           # Control Dashboard UI
+│       ├── index.html           # Control Dashboard UI
+│       └── js/
+│           ├── app.js           # Main application
+│           ├── dashboard.js     # Zone cards & gauges
+│           ├── farm-map.js      # 🗺️ Interactive farm map
+│           ├── activity-log.js  # 📝 Activity log UI
+│           ├── charts.js        # Historical charts
+│           └── ...
 └── software/                    # Vendor tools (ModScan32, ModSim32)
 ```
 
@@ -219,6 +240,17 @@ Hệ thống tư vấn dựa trên 6 giai đoạn sinh trưởng:
 | GET | `/api/weather` | Dữ liệu thời tiết |
 | GET | `/api/crop-stages` | Knowledge base giai đoạn cây trồng |
 | GET | `/api/history` | Nhật ký điều khiển |
+| GET | `/api/predictive/:zoneId` | Khuyến nghị tưới dự đoán |
+| GET | `/api/schedule` | Lịch tưới đa khu vực |
+| GET | `/api/irrigation-plan/:zoneId` | Kế hoạch tưới ET₀ |
+| GET | `/api/export/sensors` | Xuất dữ liệu cảm biến (CSV/JSON) |
+| GET | `/api/export/audit` | Xuất nhật ký kiểm toán |
+| GET | `/api/system` | System health dashboard |
+| GET | `/api/activities` | Nhật ký hoạt động nông trại |
+| POST | `/api/activities` | Ghi nhận hoạt động mới |
+| GET | `/api/activities/stats` | Thống kê hoạt động |
+| GET | `/api/telegram/status` | Trạng thái Telegram notifications |
+| POST | `/api/auth/login` | Đăng nhập (JWT) |
 | GET | `/api/health` | Health check |
 
 ### Simulator API (`localhost:3001`)
@@ -241,6 +273,29 @@ Hệ thống tư vấn dựa trên 6 giai đoạn sinh trưởng:
 - [ ] Bật MQTT authentication trong `mosquitto.conf`
 - [ ] Đặt firewall cho các port (5432, 6379, 8086)
 - [ ] Sử dụng HTTPS với reverse proxy (nginx/caddy)
+
+### Telegram Notifications (Tùy chọn)
+
+Để nhận cảnh báo qua Telegram:
+
+1. Tạo bot qua [@BotFather](https://t.me/BotFather) trên Telegram
+2. Lấy `bot_token` từ BotFather
+3. Gửi tin nhắn cho bot, rồi lấy `chat_id`:
+   ```
+   curl https://api.telegram.org/bot<TOKEN>/getUpdates
+   ```
+4. Thêm vào `.env`:
+   ```
+   TELEGRAM_BOT_TOKEN=your_token_here
+   TELEGRAM_CHAT_ID=your_chat_id_here
+   ```
+5. Restart smart-control service
+
+**Tính năng Telegram:**
+- 🚨 Cảnh báo tự động khi cảm biến vượt ngưỡng
+- 📊 Báo cáo hàng ngày lúc 7:00 AM
+- 📝 Thông báo khi ghi nhận hoạt động nông trại
+- 🔇 Tắt thông báo im lặng từ 22:00 - 06:00
 
 ---
 
