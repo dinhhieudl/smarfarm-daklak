@@ -1,0 +1,89 @@
+{
+  "dashboard_title": "SmartFarm DakLak - Soil Monitoring",
+  "slug": "smartfarm-daklak-soil",
+  "published": true,
+  "json_metadata": {
+    "timed_refresh_immune_slices": [],
+    "expanded_slices": {},
+    "refresh_frequency": 30,
+    "default_filters": "{}",
+    "color_scheme": "supersetColors",
+    "label_colors": {},
+    "shared_label_colors": {},
+    "color_scheme_domain": [],
+    "cross_filters_enabled": true
+  },
+  "position_json": {
+    "DASHBOARD_VERSION_KEY": "v2",
+    "ROOT_ID": {
+      "type": "ROOT",
+      "id": "ROOT_ID",
+      "children": ["GRID_ID"]
+    },
+    "GRID_ID": {
+      "type": "GRID",
+      "id": "GRID_ID",
+      "children": ["ROW-gauges", "ROW-timeseries", "ROW-table"]
+    },
+    "ROW-gauges": {
+      "type": "ROW",
+      "id": "ROW-gauges",
+      "children": ["CHART-temp", "CHART-moisture", "CHART-ec", "CHART-ph"],
+      "meta": {"background": "BACKGROUND_TRANSPARENT"}
+    },
+    "ROW-timeseries": {
+      "type": "ROW",
+      "id": "ROW-timeseries",
+      "children": ["CHART-npk", "CHART-all-params"],
+      "meta": {"background": "BACKGROUND_TRANSPARENT"}
+    },
+    "ROW-table": {
+      "type": "ROW",
+      "id": "ROW-table",
+      "children": ["CHART-table"],
+      "meta": {"background": "BACKGROUND_TRANSPARENT"}
+    },
+    "CHART-temp": {
+      "type": "CHART",
+      "id": "CHART-temp",
+      "children": [],
+      "meta": {"chartId": 1, "width": 6, "height": 50, "sliceName": "Soil Temperature"}
+    },
+    "CHART-moisture": {
+      "type": "CHART",
+      "id": "CHART-moisture",
+      "children": [],
+      "meta": {"chartId": 2, "width": 6, "height": 50, "sliceName": "Soil Moisture"}
+    },
+    "CHART-ec": {
+      "type": "CHART",
+      "id": "CHART-ec",
+      "children": [],
+      "meta": {"chartId": 3, "width": 6, "height": 50, "sliceName": "EC (uS/cm)"}
+    },
+    "CHART-ph": {
+      "type": "CHART",
+      "id": "CHART-ph",
+      "children": [],
+      "meta": {"chartId": 4, "width": 6, "height": 50, "sliceName": "pH"}
+    },
+    "CHART-npk": {
+      "type": "CHART",
+      "id": "CHART-npk",
+      "children": [],
+      "meta": {"chartId": 5, "width": 12, "height": 50, "sliceName": "NPK (mg/kg)"}
+    },
+    "CHART-all-params": {
+      "type": "CHART",
+      "id": "CHART-all-params",
+      "children": [],
+      "meta": {"chartId": 6, "width": 12, "height": 50, "sliceName": "All Parameters (24h)"}
+    },
+    "CHART-table": {
+      "type": "CHART",
+      "id": "CHART-table",
+      "children": [],
+      "meta": {"chartId": 7, "width": 24, "height": 50, "sliceName": "Latest Readings"}
+    }
+  }
+}
