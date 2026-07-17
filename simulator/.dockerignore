@@ -9,3 +9,8 @@ README.md
 Thumbs.db
 *.md
 .dockerignore
+tests
+__tests__
+*.test.js
+test.js
+test_scenario.js

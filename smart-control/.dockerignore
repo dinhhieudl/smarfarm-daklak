@@ -2,10 +2,8 @@ node_modules
 npm-debug.log
 .git
 .gitignore
-.env
-.env.*
-README.md
-.DS_Store
-Thumbs.db
-*.md
-.dockerignore
+tests
+__tests__
+*.test.js
+.env*
+logs/

@@ -391,18 +391,31 @@ function publishSensorData(data) {
   });
 }
 
-// ─── Events ───────────────────────────────────────────
+// ─── Events (debounced) ────────────────────────────────
+const eventState = {};
+
 function checkEvents() {
   const d = simState.data;
-  if (d.moisture < 20) addEvent('critical', `💧 Độ ẩm đất thấp: ${d.moisture.toFixed(1)}%`);
-  if (d.moisture > 85) addEvent('warning', `💧 Độ ẩm đất cao: ${d.moisture.toFixed(1)}%`);
-  if (d.temperature > 40) addEvent('warning', `🌡️ Nhiệt độ đất cao: ${d.temperature.toFixed(1)}°C`);
-  if (d.temperature < 10) addEvent('warning', `🌡️ Nhiệt độ đất thấp: ${d.temperature.toFixed(1)}°C`);
-  if (d.ph < 4.5) addEvent('warning', `🧪 pH đất chua: ${d.ph.toFixed(1)}`);
-  if (d.ph > 8.0) addEvent('warning', `🧪 pH đất kiềm: ${d.ph.toFixed(1)}`);
-  if (d.ec > 3000) addEvent('critical', `⚡ EC cao: ${d.ec} µS/cm — Đất nhiễm mặn!`);
-  if (d.nitrogen < 50) addEvent('info', `🌿 Nitrogen thấp: ${d.nitrogen} mg/kg`);
-  if (d.potassium < 80) addEvent('info', `🌿 Kali thấp: ${d.potassium} mg/kg`);
+  const checks = [
+    { key: 'moisture-low', condition: d.moisture < 20, level: 'critical', msg: `💧 Độ ẩm đất thấp: ${d.moisture.toFixed(1)}%` },
+    { key: 'moisture-high', condition: d.moisture > 85, level: 'warning', msg: `💧 Độ ẩm đất cao: ${d.moisture.toFixed(1)}%` },
+    { key: 'temp-high', condition: d.temperature > 40, level: 'warning', msg: `🌡️ Nhiệt độ đất cao: ${d.temperature.toFixed(1)}°C` },
+    { key: 'temp-low', condition: d.temperature < 10, level: 'warning', msg: `🌡️ Nhiệt độ đất thấp: ${d.temperature.toFixed(1)}°C` },
+    { key: 'ph-low', condition: d.ph < 4.5, level: 'warning', msg: `🧪 pH đất chua: ${d.ph.toFixed(1)}` },
+    { key: 'ph-high', condition: d.ph > 8.0, level: 'warning', msg: `🧪 pH đất kiềm: ${d.ph.toFixed(1)}` },
+    { key: 'ec-high', condition: d.ec > 3000, level: 'critical', msg: `⚡ EC cao: ${d.ec} µS/cm — Đất nhiễm mặn!` },
+    { key: 'nitrogen-low', condition: d.nitrogen < 50, level: 'info', msg: `🌿 Nitrogen thấp: ${d.nitrogen} mg/kg` },
+    { key: 'potassium-low', condition: d.potassium < 80, level: 'info', msg: `🌿 Kali thấp: ${d.potassium} mg/kg` }
+  ];
+
+  for (const check of checks) {
+    if (check.condition && !eventState[check.key]) {
+      addEvent(check.level, check.msg);
+      eventState[check.key] = true;
+    } else if (!check.condition) {
+      eventState[check.key] = false;
+    }
+  }
 }
 
 function addEvent(level, message) {

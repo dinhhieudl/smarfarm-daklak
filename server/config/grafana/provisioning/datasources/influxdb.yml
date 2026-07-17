@@ -12,4 +12,4 @@ datasources:
       defaultBucket: soil_data
       tlsSkipVerify: true
     secureJsonData:
-      token: smarfarm-token-2026
+      token: ${INFLUXDB_TOKEN}  # Set via environment variable
