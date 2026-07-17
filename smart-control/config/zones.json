@@ -1,14 +1,38 @@
 [
-  {
-    "id": "zone-A",
-    "name": "Khu A — Cà phê Robusta",
-    "area": 5000,
-    "crop": "robusta",
-    "plantDate": "2024-04-15",
-    "soilType": "bazan-red",
-    "pumpId": "pump-1",
-    "valveId": "valve-1",
-    "moistureSensor": "aabbccdd11223344",
-    "location": { "lat": 12.75, "lng": 108.35 }
-  }
+    {
+        "id": "zone-A",
+        "name": "Khu A",
+        "area": 3000,
+        "crop": "robusta",
+        "plantDate": "2024-03-15",
+        "soilType": "bazan-red",
+        "pumpId": "pump-1",
+        "valveId": "valve-1",
+        "moistureSensor": "aabbccdd11223344",
+        "location": { "lat": 12.753, "lng": 108.048 }
+    },
+    {
+        "id": "zone-B",
+        "name": "Khu B",
+        "area": 2500,
+        "crop": "robusta",
+        "plantDate": "2024-06-20",
+        "soilType": "bazan-red",
+        "pumpId": "pump-1",
+        "valveId": "valve-2",
+        "moistureSensor": "bbccdd1122334455",
+        "location": { "lat": 12.755, "lng": 108.050 }
+    },
+    {
+        "id": "zone-C",
+        "name": "Khu C",
+        "area": 2000,
+        "crop": "arabica",
+        "plantDate": "2024-01-10",
+        "soilType": "bazan-red",
+        "pumpId": "pump-2",
+        "valveId": "valve-3",
+        "moistureSensor": "ccdd112233445566",
+        "location": { "lat": 12.751, "lng": 108.052 }
+    }
 ]

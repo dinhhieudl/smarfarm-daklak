@@ -48,3 +48,18 @@ temp/
 # Logs directory (keep .gitkeep)
 logs/*
 !logs/.gitkeep
+
+# Superset
+server/superset/.env
+
+# Specific files
+*.epub
+SESSION_CONTEXT.md
+SESSION_PROMPT.md
+query_avy_debt.py
+AUDIT-REPORT.md
+COMPREHENSIVE-AUDIT-2026.md
+TESTING-REPORT.md
+
+# Smart control logs directory
+smart-control/logs/

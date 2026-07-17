@@ -75,4 +75,31 @@ describe('WaterBalance', () => {
     const recent = wb.getHistory(1);
     expect(recent.length).toBeGreaterThanOrEqual(1);
   });
+
+  test('respects custom moistureMin threshold', () => {
+    const wb = new WaterBalance({
+      zoneId: 'zone-C',
+      initialMoisture: 45,
+      fieldCapacity: 70,
+      wiltingPoint: 30,
+      moistureMin: 40,
+      rootDepth: 0.5,
+      availableWater: 100
+    });
+
+    const result = wb.predict(4.0, 0, 24);
+    expect(result.needsIrrigation).toBe(true);
+  });
+
+  test('defaults moistureMin to 35 when not provided', () => {
+    const wb = new WaterBalance({
+      zoneId: 'test',
+      initialMoisture: 38,
+      fieldCapacity: 65,
+      wiltingPoint: 25,
+      rootDepth: 0.5,
+      availableWater: 100
+    });
+    expect(wb.moistureMin).toBe(35);
+  });
 });

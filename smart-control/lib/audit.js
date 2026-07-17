@@ -48,11 +48,9 @@ function loadFromFile() {
  */
 function appendToFile(entry) {
   ensureLogDir();
-  try {
-    fs.appendFileSync(LOG_FILE, JSON.stringify(entry) + '\n');
-  } catch (err) {
-    console.error('[Audit] Failed to write log:', err.message);
-  }
+  fs.appendFile(LOG_FILE, JSON.stringify(entry) + '\n', (err) => {
+    if (err) console.error('[Audit] Failed to write log:', err.message);
+  });
 }
 
 /**

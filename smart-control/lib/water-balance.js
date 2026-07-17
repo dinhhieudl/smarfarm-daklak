@@ -13,12 +13,14 @@ class WaterBalance {
    * @param {number} config.wiltingPoint - Wilting point moisture (%). Default 25%.
    * @param {number} config.rootDepth - Effective root zone depth (m). Default 0.5.
    * @param {number} config.availableWater - Available water capacity (mm/m). Default 100.
+   * @param {number} config.moistureMin - Minimum moisture threshold (%). Default 35.
    */
   constructor(config) {
     this.zoneId = config.zoneId;
     this.moisture = config.initialMoisture ?? 55;
     this.fieldCapacity = config.fieldCapacity ?? 65;
     this.wiltingPoint = config.wiltingPoint ?? 25;
+    this.moistureMin = config.moistureMin ?? 35;
     this.rootDepth = config.rootDepth ?? 0.5;
     this.availableWater = config.availableWater ?? 100;
     this.lastUpdate = new Date();
@@ -107,7 +109,7 @@ class WaterBalance {
 
     return {
       predictedMoisture: Math.round(predictedMoisture * 10) / 10,
-      needsIrrigation: predictedMoisture < 35,
+      needsIrrigation: predictedMoisture < this.moistureMin,
       daysToWilting
     };
   }

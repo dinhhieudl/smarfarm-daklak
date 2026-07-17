@@ -1,17 +1,25 @@
-version: "3.8"
-
 # ============================================================
-# SmartFarm DakLak - Full Stack
-# ChirpStack v4 + Node-RED + InfluxDB + Grafana + Mosquitto
+# SmartFarm DakLak - Full Stack with Monitoring
+# ChirpStack v4 + Node-RED + InfluxDB + Superset + Mosquitto
+# + Prometheus Monitoring
 # ============================================================
 # Run: cp ../.env.example ../.env && docker compose up -d
 # Access:
-#   ChirpStack : http://localhost:8080  (admin/admin)
-#   Node-RED   : http://localhost:1880
-#   Grafana    : http://localhost:3005  (admin/admin)
-#   InfluxDB   : http://localhost:8086
-#   MQTT       : localhost:1883
+#   ChirpStack    : http://localhost:8080  (admin/admin)
+#   Node-RED      : http://localhost:1880
+#   Superset      : http://localhost:8088  (admin/admin)
+#   InfluxDB      : http://localhost:8086
+#   MQTT          : localhost:1883
+#   Prometheus    : http://localhost:9091
+#   Smart Control : http://localhost:3002
 # ============================================================
+
+x-superset-image: &superset-image apache/superset:4.1.1
+x-superset-volumes:
+  &superset-volumes
+  - ./superset/config/superset_config.py:/app/pythonpath/superset_config.py
+  - ./superset/config/requirements-local.txt:/app/requirements-local.txt
+  - superset_home:/app/superset_home
 
 services:
 
@@ -20,20 +28,30 @@ services:
     image: postgres:16-alpine
     container_name: sf-postgres
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-chirpstack}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chirpstack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-chirpstack}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./config/postgres-init:/docker-entrypoint-initdb.d
-    ports:
-      - "5432:5432"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chirpstack}"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 10s
 
   # ── Redis (ChirpStack cache) ──
   redis:
@@ -42,13 +60,22 @@ services:
     restart: unless-stopped
     volumes:
       - redis-data:/data
-    ports:
-      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
+      interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 5s
 
   # ── Mosquitto MQTT Broker ──
   mosquitto:
@@ -62,6 +89,17 @@ services:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
       - mosquitto-data:/mosquitto/data
       - mosquitto-log:/mosquitto/log
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   # ── ChirpStack Network Server ──
   chirpstack:
@@ -75,15 +113,26 @@ services:
       redis:
         condition: service_healthy
       mosquitto:
-        condition: service_started
+        condition: service_healthy
     ports:
-      - "8080:8080"     # Web UI
+      - "8080:8080"
     volumes:
       - ./config/chirpstack.toml:/etc/chirpstack/chirpstack.toml
       - ./config/region_as923.toml:/etc/chirpstack/region_as923.toml
     environment:
       - MQTT_BROKER_HOST=mosquitto
       - MQTT_BROKER_PORT=1883
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # ── ChirpStack Gateway Bridge (UDP → MQTT) ──
   chirpstack-gateway-bridge:
@@ -91,34 +140,57 @@ services:
     container_name: sf-gateway-bridge
     restart: unless-stopped
     ports:
-      - "1700:1700/udp"  # LoRa packet forwarder
+      - "1700:1700/udp"
     volumes:
       - ./config/gateway-bridge.toml:/etc/chirpstack-gateway-bridge/chirpstack-gateway-bridge.toml
     depends_on:
-      - mosquitto
-    networks:
-      - default
+      mosquitto:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── Node-RED (Data Processing) ──
   nodered:
-    image: nodered/node-red:latest
+    image: nodered/node-red:4.0
     container_name: sf-nodered
     restart: unless-stopped
     depends_on:
-      - mosquitto
-      - chirpstack
+      mosquitto:
+        condition: service_healthy
+      chirpstack:
+        condition: service_healthy
     ports:
       - "1880:1880"
     volumes:
       - nodered-data:/data
     environment:
       - TZ=${TZ:-Asia/Ho_Chi_Minh}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:1880"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # ── InfluxDB (Time-Series Storage) ──
   influxdb:
     image: influxdb:2.7
     container_name: sf-influxdb
     restart: unless-stopped
+    stop_grace_period: 30s
     ports:
       - "8086:8086"
     volumes:
@@ -127,30 +199,172 @@ services:
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_ADMIN_USER:-admin}
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-admin12345}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:?INFLUXDB_ADMIN_PASSWORD is required}
       - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_INIT_ORG:-smarfarm}
       - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_INIT_BUCKET:-soil_data}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_INIT_ADMIN_TOKEN:-smarfarm-token-2026}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_INIT_ADMIN_TOKEN:?INFLUXDB_INIT_ADMIN_TOKEN is required}
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
-  # ── Grafana (Dashboard) ──
-  grafana:
-    image: grafana/grafana:latest
-    container_name: sf-grafana
+  # ─── Apache Superset (Dashboard) ───
+  superset-db:
+    image: postgres:16-alpine
+    container_name: sf-superset-db
     restart: unless-stopped
-    depends_on:
-      - influxdb
-    ports:
-      - "3005:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./config/grafana/provisioning:/etc/grafana/provisioning
-      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
-      - ./config/grafana/alerting:/var/lib/grafana/alerting
     environment:
-      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER:-admin}
-      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-admin}
-      - GF_USERS_ALLOW_SIGN_UP=false
-      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD:?SUPERSET_DB_PASSWORD is required}
+    volumes:
+      - superset-db-data:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U superset"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  superset-redis:
+    image: redis:7-alpine
+    container_name: sf-superset-redis
+    restart: unless-stopped
+    volumes:
+      - superset-redis-data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  superset-app:
+    # NOTE: Grafana was replaced by Superset for dashboarding
+    image: *superset-image
+    container_name: sf-superset-app
+    command: >
+      bash -c "
+        pip install -r /app/requirements-local.txt &&
+        superset db upgrade &&
+        superset fab create-admin --username admin --firstname Admin --lastname Admin --email admin@smartfarm.local --password admin &&
+        superset init &&
+        gunicorn --bind 0.0.0.0:8088 --workers 2 --timeout 120 'superset.app:create_app()'
+      "
+    user: "root"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY is required}
+      DATABASE_DB: superset
+      DATABASE_HOST: superset-db
+      DATABASE_PASSWORD: ${SUPERSET_DB_PASSWORD:?SUPERSET_DB_PASSWORD is required}
+      DATABASE_USER: superset
+      DATABASE_PORT: 5432
+      DATABASE_DIALECT: postgresql
+      REDIS_HOST: superset-redis
+      REDIS_PORT: 6379
+      SUPERSET_LOAD_EXAMPLES: "false"
+      FLASK_DEBUG: "false"
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+    depends_on:
+      superset-db:
+        condition: service_healthy
+      superset-redis:
+        condition: service_healthy
+    volumes: *superset-volumes
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+
+  superset-worker:
+    image: *superset-image
+    container_name: sf-superset-worker
+    command: ["celery", "-A", "superset.tasks.celery_app:app", "worker", "--pool=prefork", "--concurrency=2"]
+    user: "root"
+    restart: unless-stopped
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY is required}
+      DATABASE_DB: superset
+      DATABASE_HOST: superset-db
+      DATABASE_PASSWORD: ${SUPERSET_DB_PASSWORD:?SUPERSET_DB_PASSWORD is required}
+      DATABASE_USER: superset
+      DATABASE_PORT: 5432
+      DATABASE_DIALECT: postgresql
+      REDIS_HOST: superset-redis
+      REDIS_PORT: 6379
+    depends_on:
+      superset-app:
+        condition: service_healthy
+    volumes: *superset-volumes
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  superset-worker-beat:
+    image: *superset-image
+    container_name: sf-superset-worker-beat
+    command: ["celery", "-A", "superset.tasks.celery_app:app", "beat", "--pidfile", "/tmp/celerybeat.pid"]
+    user: "root"
+    restart: unless-stopped
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?SUPERSET_SECRET_KEY is required}
+      DATABASE_DB: superset
+      DATABASE_HOST: superset-db
+      DATABASE_PASSWORD: ${SUPERSET_DB_PASSWORD:?SUPERSET_DB_PASSWORD is required}
+      DATABASE_USER: superset
+      DATABASE_PORT: 5432
+      DATABASE_DIALECT: postgresql
+      REDIS_HOST: superset-redis
+      REDIS_PORT: 6379
+    depends_on:
+      superset-app:
+        condition: service_healthy
+    volumes: *superset-volumes
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      disable: true
 
   # ─── Smart Control & Advisory Service ───
   smart-control:
@@ -158,15 +372,61 @@ services:
     container_name: sf-smart-control
     restart: unless-stopped
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
     ports:
       - "3002:3002"
     environment:
       - MQTT_URL=mqtt://mosquitto:1883
       - PORT=3002
+      - NODE_ENV=production
+      - LOG_LEVEL=info
       - TZ=${TZ:-Asia/Ho_Chi_Minh}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      - OPERATOR_PASSWORD=${OPERATOR_PASSWORD:?OPERATOR_PASSWORD is required}
+      - VIEWER_PASSWORD=${VIEWER_PASSWORD:?VIEWER_PASSWORD is required}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/api/zones"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3002/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ─── Prometheus (Monitoring) ───
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: sf-prometheus
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=720h'
+      - '--web.enable-lifecycle'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -180,4 +440,7 @@ volumes:
   nodered-data:
   influxdb-data:
   influxdb-config:
-  grafana-data:
+  superset_home:
+  superset-db-data:
+  superset-redis-data:
+  prometheus-data:

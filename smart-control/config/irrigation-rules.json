@@ -1,12 +1,5 @@
 {
-  "zone-A": {
-    "enabled": true,
-    "moistureMin": 35,
-    "moistureMax": 65,
-    "maxDurationMin": 30,
-    "cooldownMin": 120,
-    "rainPause": true,
-    "rainThreshold": 5,
-    "lastIrrigation": null
-  }
+    "zone-A": { "enabled": true, "moistureMin": 35, "moistureMax": 65, "maxDurationMin": 30, "cooldownMin": 120, "rainPause": true, "rainThreshold": 5, "lastIrrigation": null },
+    "zone-B": { "enabled": true, "moistureMin": 35, "moistureMax": 65, "maxDurationMin": 25, "cooldownMin": 120, "rainPause": true, "rainThreshold": 5, "lastIrrigation": null },
+    "zone-C": { "enabled": true, "moistureMin": 40, "moistureMax": 70, "maxDurationMin": 20, "cooldownMin": 90, "rainPause": true, "rainThreshold": 5, "lastIrrigation": null }
 }

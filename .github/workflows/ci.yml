@@ -1,61 +1,169 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     branches: [main]
 
+env:
+  NODE_VERSION: '20'
+
 jobs:
+  # ─── Code Quality ───
   lint:
-    name: Lint
+    name: Lint & Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
       - run: npm ci
-      - run: npx eslint smart-control/server.js simulator/server.js --max-warnings 50
+      - run: npx eslint smart-control/**/*.js simulator/**/*.js --max-warnings 50
+      - run: npx prettier --check "smart-control/**/*.js" "simulator/**/*.js"
 
+  # ─── Security Scan ───
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      - name: Audit smart-control
+        run: cd smart-control && npm audit --audit-level=high
+      - name: Audit simulator
+        run: cd simulator && npm audit --audit-level=high
+
+  # ─── Unit Tests ───
   test-smart-control:
     name: Test Smart Control
     runs-on: ubuntu-latest
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-      - run: npm ci
-      - run: cd smart-control && npm ci && npm test
+      - run: cd smart-control && npm ci
+      - name: Run tests with coverage
+        run: cd smart-control && npm test -- --coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: smart-control-coverage
+          path: smart-control/coverage/
 
   test-simulator:
     name: Test Simulator
     runs-on: ubuntu-latest
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-      - run: npm ci
-      - run: cd simulator && npm ci && npm test
+      - run: cd simulator && npm ci
+      - name: Run tests with coverage
+        run: cd simulator && npm test -- --coverage
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-coverage
+          path: simulator/coverage/
 
-  build-check:
-    name: Build Check
+  # ─── Docker Build ───
+  docker-build:
+    name: Docker Build
     runs-on: ubuntu-latest
+    needs: [test-smart-control, test-simulator]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build smart-control image
+        run: docker build -t smartfarm-smart-control:${{ github.sha }} ./smart-control
+      - name: Build simulator image
+        run: docker build -t smartfarm-simulator:${{ github.sha }} ./simulator
+      - name: Test smart-control starts
+        run: |
+          docker run -d --name test-sc \
+            -e MQTT_URL=mqtt://localhost:1883 \
+            -e JWT_SECRET=test-secret \
+            smartfarm-smart-control:${{ github.sha}}
+          sleep 5
+          docker exec test-sc wget -q -O- http://localhost:3002/api/health
+          docker stop test-sc && docker rm test-sc
+
+  # ─── Integration Tests ───
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    services:
+      mosquitto:
+        image: eclipse-mosquitto:2
+        ports:
+          - 1883:1883
+        options: >-
+          --health-cmd "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-      - run: npm ci
-      - name: Check smart-control starts
-        run: cd smart-control && timeout 5 node -e "require('./server.js')" || true
-        env:
-          MQTT_URL: 'mqtt://localhost:1883'
-      - name: Check simulator starts
-        run: cd simulator && timeout 5 node -e "require('./server.js')" || true
+      - name: Install dependencies
+        run: |
+          cd smart-control && npm ci
+          cd ../simulator && npm ci
+      - name: Start services
+        run: |
+          cd smart-control && JWT_SECRET=test-secret MQTT_URL=mqtt://localhost:1883 node server.js &
+          cd ../simulator && MQTT_URL=mqtt://localhost:1883 node server.js &
+          sleep 5
+      - name: Test API endpoints
+        run: |
+          # Health check
+          curl -f http://localhost:3002/api/health || exit 1
+          # Zones endpoint
+          curl -f http://localhost:3001/api/health || exit 1
+          # Login
+          TOKEN=$(curl -s -X POST http://localhost:3002/api/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"admin123"}' | jq -r '.token')
+          test -n "$TOKEN" || exit 1
+          # Authenticated endpoint
+          curl -f -H "Authorization: Bearer $TOKEN" http://localhost:3002/api/zones || exit 1
+
+  # ─── Deploy (only on main push) ───
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [integration]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd /opt/smartfarm-daklak
+            git pull origin main
+            cd smart-control && npm ci --production
+            cd ../simulator && npm ci --production
+            docker compose -f server/docker-compose.yml down
+            docker compose -f server/docker-compose.yml up -d --build
+            sleep 10
+            curl -f http://localhost:3002/api/health || exit 1

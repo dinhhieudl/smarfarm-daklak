@@ -90,9 +90,7 @@ function updateSoilMoisture(currentMoisture, rainfall, irrigationMm, et0, temper
     const totalAvailable = soil.fieldCapacity - soil.wiltingPoint;
     stressFactor = Math.max(0, availableWater / totalAvailable);
   }
-  // Temperature effect on ET
-  const tempFactor = Math.min(1.5, Math.max(0.3, temperature / 30));
-  const et_actual = et0 * stressFactor * tempFactor * dtHours;
+  const et_actual = et0 * stressFactor * dtHours;
 
   // ── Water Balance ──
   let newWaterMm = currentWaterMm + infiltration - et_actual - drainage;
@@ -115,12 +113,6 @@ function updateSoilMoisture(currentMoisture, rainfall, irrigationMm, et0, temper
  * Soil temperature lags air temperature and has dampened amplitude
  */
 function updateSoilTemperature(airTemperature, currentSoilTemp, depthCm = 10, dtHours = 1) {
-  // Thermal diffusivity of soil (m²/s) - typical for moist clay loam
-  const alpha = 5e-7;
-
-  // Damping depth increases with depth
-  const dampingDepth = Math.sqrt(2 * alpha * 86400 / Math.PI); // daily damping depth
-
   // Time constant for soil-atmosphere coupling
   const tau = 6; // hours (soil responds slowly)
   const coupling = 1 - Math.exp(-dtHours / tau);
@@ -170,19 +162,12 @@ function updatePH(currentPH, rainfall, basePH = 5.8) {
 /**
  * Update NPK based on plant uptake, leaching, and mineralization
  */
-function updateNPK(current, rainfall, irrigationMm, plantUptakeRate, baseValues) {
-  // Plant uptake (proportional to moisture availability)
+function updateNPK(current, rainfall, irrigationMm, plantUptakeRate, baseValues, nutrientType) {
   const uptake = plantUptakeRate;
-
-  // Leaching (N and K are mobile, P is less mobile)
-  const leachFactor = (rainfall + irrigationMm) * 0.3;
-
-  // Slow mineralization from organic matter
-  const mineralization = 0.5; // mg/kg per tick
-
-  // Return toward baseline
+  const leachFactors = { N: 0.4, P: 0.05, K: 0.3 };
+  const leachFactor = (rainfall + irrigationMm) * (leachFactors[nutrientType] || 0.3);
+  const mineralization = 0.5;
   const baselinePull = (baseValues - current) * 0.005;
-
   return Math.max(5, Math.min(600, current - uptake - leachFactor + mineralization + baselinePull));
 }
 

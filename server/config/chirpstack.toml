@@ -35,7 +35,7 @@
 # ── API ──
 [api]
   bind = "0.0.0.0:8080"
-  secret = "${CHIRPSTACK_JWT_SECRET:-smarfarm-daklak-jwt-secret-2026}"
+  secret = "${CHIRPSTACK_JWT_SECRET:?CHIRPSTACK_JWT_SECRET is required}"
 
 # ── Monitoring ──
 [monitoring]

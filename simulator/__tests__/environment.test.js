@@ -114,6 +114,13 @@ describe('Environment Model', () => {
       expect(typeof wind).toBe('number');
     });
 
+    test('never returns negative values', () => {
+      for (let i = 0; i < 1000; i++) {
+        const wind = getWindSpeed(3, 1); // Low hour, dry season
+        expect(wind).toBeGreaterThanOrEqual(0);
+      }
+    });
+
     test('wind is generally higher in rainy season', () => {
       const rainyWinds = [];
       const dryWinds = [];

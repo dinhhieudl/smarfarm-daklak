@@ -1,4 +1,4 @@
-const { SOIL_PROFILES, updateSoilMoisture, updateEC } = require('../lib/soil');
+const { SOIL_PROFILES, updateSoilMoisture, updateEC, updateNPK } = require('../lib/soil');
 
 describe('Soil Water Balance Model', () => {
   describe('updateSoilMoisture()', () => {
@@ -96,6 +96,43 @@ describe('Soil Water Balance Model', () => {
     test('EC pulls toward baseline over time', () => {
       const highEC = updateEC(1000, 55, 0, 0, 450);
       expect(highEC).toBeLessThan(1000); // pulled toward 450
+    });
+  });
+
+  describe('NPK Leaching', () => {
+    test('nitrogen leaches faster than phosphorus', () => {
+      const nResult = updateNPK(100, 30, 0, 0.3, 120, 'N');
+      const pResult = updateNPK(100, 30, 0, 0.1, 35, 'P');
+      // N should decrease more than P due to higher leaching factor (0.4 vs 0.05)
+      expect(100 - nResult).toBeGreaterThan(100 - pResult);
+    });
+
+    test('potassium leaching is between N and P', () => {
+      const nResult = updateNPK(100, 30, 0, 0.3, 120, 'N');
+      const kResult = updateNPK(100, 30, 0, 0.2, 180, 'K');
+      const pResult = updateNPK(100, 30, 0, 0.1, 35, 'P');
+      // K leaching (0.3) should be between N (0.4) and P (0.05)
+      expect(100 - kResult).toBeLessThan(100 - nResult);
+      expect(100 - kResult).toBeGreaterThan(100 - pResult);
+    });
+
+    test('all nutrients stay within bounds', () => {
+      const n = updateNPK(100, 50, 20, 0.3, 120, 'N');
+      const p = updateNPK(100, 50, 20, 0.1, 35, 'P');
+      const k = updateNPK(100, 50, 20, 0.2, 180, 'K');
+      expect(n).toBeGreaterThanOrEqual(5);
+      expect(n).toBeLessThanOrEqual(600);
+      expect(p).toBeGreaterThanOrEqual(5);
+      expect(p).toBeLessThanOrEqual(600);
+      expect(k).toBeGreaterThanOrEqual(5);
+      expect(k).toBeLessThanOrEqual(600);
+    });
+
+    test('mineralization adds small amount each tick', () => {
+      const initial = 50;
+      const result = updateNPK(initial, 0, 0, 0, 120, 'N');
+      // With no uptake and no leaching, mineralization (+0.5) should increase value
+      expect(result).toBeGreaterThan(initial);
     });
   });
 });

@@ -14,12 +14,26 @@ const { SCENARIOS } = require('./lib/scenarios');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+
+// ─── CORS Configuration ─────────────────────────────
+const ALLOWED_ORIGINS = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : ['*'];
+
+const io = new Server(server, {
+  cors: {
+    origin: ALLOWED_ORIGINS.includes('*') ? '*' : ALLOWED_ORIGINS,
+    methods: ['GET', 'POST']
+  }
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '1mb' }));
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.includes('*')) {
+    res.header('Access-Control-Allow-Origin', '*');
+  } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -29,7 +43,6 @@ app.use((req, res, next) => {
 // ─── Config ───────────────────────────────────────────
 const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost:1883';
 const APP_ID = 'smartfarm-daklak';
-const DEV_EUI = 'aabbccdd11223344';
 const MAX_EVENTS = 200;
 const MAX_HISTORY = 120;
 
@@ -178,9 +191,9 @@ function physicsTick() {
   simState.data.ph = soil.updatePH(simState.data.ph, rainfall, 5.8);
 
   // ── Update NPK ──
-  simState.data.nitrogen = soil.updateNPK(simState.data.nitrogen, rainfall, irrigationMm, 0.3, 120);
-  simState.data.phosphorus = soil.updateNPK(simState.data.phosphorus, rainfall, irrigationMm, 0.1, 35);
-  simState.data.potassium = soil.updateNPK(simState.data.potassium, rainfall, irrigationMm, 0.2, 180);
+  simState.data.nitrogen = soil.updateNPK(simState.data.nitrogen, rainfall, irrigationMm, 0.3, 120, 'N');
+  simState.data.phosphorus = soil.updateNPK(simState.data.phosphorus, rainfall, irrigationMm, 0.1, 35, 'P');
+  simState.data.potassium = soil.updateNPK(simState.data.potassium, rainfall, irrigationMm, 0.2, 180, 'K');
 
   // ── Salinity tracks EC ──
   simState.data.salinity = Math.round(simState.data.ec * 0.5);
@@ -246,12 +259,11 @@ function tick() {
   scenarioTick();
 
   // 2. Run physics engine (if enabled)
-  if (simState.config.usePhysics) {
+  if (simState.config.usePhysics && !simState.scenario.active) {
     physicsTick();
+  } else if (simState.config.usePhysics && simState.scenario.active) {
+    applyVariation();
   }
-
-  // 3. Apply variation/noise
-  applyVariation();
 
   // 4. Apply fault injection
   const faultResult = faultInjector.processTick({ ...simState.data });
@@ -564,6 +576,21 @@ io.on('connection', (socket) => {
   });
 });
 
+// ─── Rate Limiting ────────────────────────────────────
+const rateLimits = new Map();
+function rateLimit(windowMs, max) {
+  return (req, res, next) => {
+    const key = req.ip;
+    const now = Date.now();
+    const hits = (rateLimits.get(key) || []).filter(t => t > now - windowMs);
+    if (hits.length >= max) return res.status(429).json({ error: 'Too many requests' });
+    hits.push(now);
+    rateLimits.set(key, hits);
+    next();
+  };
+}
+app.use('/api', rateLimit(60000, 60));
+
 // ─── REST API ─────────────────────────────────────────
 app.get('/api/status', (req, res) => {
   res.json({
@@ -598,9 +625,14 @@ app.get('/api/faults', (req, res) => {
   res.json({ faultScenarios: FAULT_SCENARIOS, activeFaults: faultInjector.listFaults() });
 });
 
+const VALID_FAULT_TYPES = ['sensor_stuck', 'sensor_drift', 'sensor_offset', 'garbage_data', 'packet_loss', 'gateway_failure', 'noise_multiplier'];
+
 app.post('/api/fault/inject', (req, res) => {
   const { type, durationTicks, params } = req.body || {};
   if (!type) return res.status(400).json({ error: 'Missing fault type' });
+  if (!VALID_FAULT_TYPES.includes(type)) {
+    return res.status(400).json({ error: 'Invalid fault type', valid: VALID_FAULT_TYPES });
+  }
   const id = faultInjector.addFault({ type, params: params || {}, durationTicks: durationTicks || 30 });
   addEvent('warning', `🔧 Fault injected: ${type}`);
   res.json({ ok: true, faultId: id, type });

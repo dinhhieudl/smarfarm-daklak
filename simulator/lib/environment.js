@@ -45,10 +45,11 @@ function getSolarRadiation(hour) {
 // Reference Evapotranspiration (ET₀) - Simplified Penman-Monteith
 // Returns mm/hour
 function getET0(temperature, humidity, windSpeed, solarRadiation) {
+  if (temperature == null || humidity == null || windSpeed == null || solarRadiation == null) return 0;
   // Simplified Hargreaves-Samani equation
   // ET₀ = 0.0023 * (T_mean + 17.8) * (T_max - T_min)^0.5 * Ra
   // We use hourly approximation:
-  const Ra = solarRadiation / 1000; // Convert W/m² to MJ/m²/hour (approx /3.6)
+  const Ra = solarRadiation / 277.78; // W/m² → MJ/m²/hour
   const delta = 0.409 * Math.sin(2 * Math.PI * (getDayOfYear() / 365) - 1.39); // solar declination
 
   // Latent heat of vaporization
@@ -124,7 +125,7 @@ function getWindSpeed(hour, month) {
   const factor = Math.sin(Math.PI * Math.max(0, hour - 6) / 14);
   const wind = base + (peak - base) * Math.max(0, factor);
 
-  return wind + (Math.random() - 0.5) * 3;
+  return Math.max(0, wind + (Math.random() - 0.5) * 3);
 }
 
 module.exports = {

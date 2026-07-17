@@ -26,6 +26,7 @@ class PredictiveIrrigation {
         initialMoisture: rule.moistureMax ? (rule.moistureMin + rule.moistureMax) / 2 : 55,
         fieldCapacity: rule.moistureMax ?? 65,
         wiltingPoint: (rule.moistureMin ?? 35) - 10,
+        moistureMin: rule.moistureMin ?? 35,
         rootDepth: 0.5,
         availableWater: 100
       });

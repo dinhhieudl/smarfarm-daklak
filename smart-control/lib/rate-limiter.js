@@ -15,7 +15,7 @@ setInterval(() => {
       store.delete(key);
     }
   }
-}, 5 * 60 * 100);
+}, 5 * 60 * 1000);
 
 /**
  * Create rate limiter middleware

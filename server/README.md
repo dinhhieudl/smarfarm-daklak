@@ -12,8 +12,9 @@ Docker Compose stack cho SmartFarm DakLak.
 | ChirpStack | chirpstack/chirpstack:4 | 8080, 1700/udp | LoRaWAN server |
 | Node-RED | nodered/node-red:latest | 1880 | Data processing |
 | InfluxDB | influxdb:2.7 | 8086 | Time-series storage |
-| Grafana | grafana/grafana:latest | 3005 | Dashboard |
+| Superset | apache/superset:4.1.1 | 8088 | Dashboard (replaced Grafana) |
 | Smart Control | (build from ../smart-control) | 3002 | Control & advisory |
+| Prometheus | prom/prometheus:v2.53.0 | 9091 | Monitoring |
 
 ## Quick Start
 
@@ -49,7 +50,7 @@ reset.bat    :: Reset all data (destructive!)
 | Service | User | Password |
 |---------|------|----------|
 | ChirpStack | admin | admin |
-| Grafana | admin | admin |
+| Superset | admin | admin |
 | InfluxDB | admin | admin12345 |
 | PostgreSQL | chirpstack | chirpstack |
 
@@ -58,7 +59,7 @@ reset.bat    :: Reset all data (destructive!)
 ## Data Pipeline
 
 ```
-Simulator/Device → MQTT → ChirpStack → Node-RED → InfluxDB → Grafana
+Simulator/Device → MQTT → ChirpStack → Node-RED → InfluxDB → Superset
                                               ↓
                                         Smart Control → Actuators
 ```

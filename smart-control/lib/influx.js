@@ -10,6 +10,12 @@ const INFLUXDB_TOKEN = process.env.INFLUXDB_TOKEN || '';
 const INFLUXDB_ORG = process.env.INFLUXDB_ORG || 'smartfarm';
 const INFLUXDB_BUCKET = process.env.INFLUXDB_BUCKET || 'soil_data';
 
+function sanitizeZoneId(zoneId) {
+  if (typeof zoneId !== 'string') return null;
+  if (!/^[a-zA-Z0-9_-]+$/.test(zoneId)) return null;
+  return zoneId;
+}
+
 function init() {
   if (!INFLUXDB_TOKEN) {
     console.log('[InfluxDB] No token configured, persistence disabled (in-memory fallback active)');
@@ -87,6 +93,8 @@ function writeControlEvent(actuatorId, action, source, prevState, newState) {
  * @returns {Promise<Array>}
  */
 async function queryHistory(zoneId, hours = 24) {
+  const safeZone = sanitizeZoneId(zoneId);
+  if (!safeZone) return [];
   if (!influxAvailable || !queryApi) return [];
 
   const rangeStart = `-${hours}h`;
@@ -94,7 +102,7 @@ async function queryHistory(zoneId, hours = 24) {
     from(bucket: "${INFLUXDB_BUCKET}")
       |> range(start: ${rangeStart})
       |> filter(fn: (r) => r["_measurement"] == "sensor_data")
-      |> filter(fn: (r) => r["zone"] == "${zoneId}")
+      |> filter(fn: (r) => r["zone"] == "${safeZone}")
       |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
       |> sort(columns: ["_time"], desc: true)
       |> limit(n: 1000)
@@ -178,7 +186,8 @@ function isAvailable() {
 function flush() {
   if (writeApi) {
     writeApi.flush().catch(() => {});
+    writeApi.close().catch(() => {});
   }
 }
 
-module.exports = { init, writeSensorData, writeControlEvent, queryHistory, queryControlEvents, isAvailable, flush };
+module.exports = { init, writeSensorData, writeControlEvent, queryHistory, queryControlEvents, isAvailable, flush, sanitizeZoneId };

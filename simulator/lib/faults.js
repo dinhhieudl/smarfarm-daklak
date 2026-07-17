@@ -34,7 +34,7 @@ class FaultInjector {
       ...fault,
       id,
       startTick: Date.now(),
-      remainingTicks: fault.durationTicks || Infinity,
+      remainingTicks: fault.durationTicks != null ? fault.durationTicks : Infinity,
       tickCount: 0
     });
     return id;
@@ -162,11 +162,11 @@ class FaultInjector {
         }
 
         case 'drift': {
-          // Gradual drift in sensor readings
-          const rate = fault.params?.rate || 0.1; // per tick
+          const rate = fault.params?.rate || 0.1;
+          const maxDrift = fault.params?.maxDrift || 20;
           const param = fault.params?.param || 'temperature';
           if (modifiedData[param] !== undefined) {
-            modifiedData[param] += rate * fault.tickCount;
+            modifiedData[param] = Math.max(-maxDrift, Math.min(maxDrift, modifiedData[param] + rate * fault.tickCount));
           }
           appliedFaults.push({ type: 'drift', id });
           break;

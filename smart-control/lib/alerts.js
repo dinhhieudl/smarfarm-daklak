@@ -1,6 +1,11 @@
 // SmartFarm DakLak - Alert/Notification System
 // Monitors sensor data and actuator states for threshold violations
 
+const fs = require('fs').promises;
+const fsSync = require('fs');
+const path = require('path');
+const ALERTS_FILE = path.join(__dirname, '..', 'logs', 'alerts.json');
+
 const COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes cooldown
 const MAX_ALERTS = 100;
 
@@ -11,51 +16,33 @@ let alertIdCounter = 0;
 // Cooldown tracking: key = ruleId + severity → last triggered timestamp
 let cooldownMap = new Map();
 
-// Alert rules definition
-const ALERT_RULES = [
-  {
-    id: 'moisture-critical',
-    name: 'Độ ẩm đất cực thấp',
-    severity: 'critical',
-    condition: (sensor) => sensor.moisture < 20,
-    message: (sensor) => `Độ ẩm đất ${sensor.moisture.toFixed(1)}% — DƯỚI NGƯỠNG NGUY HIỂM (<20%). Cần tưới NGAY!`
-  },
-  {
-    id: 'moisture-warning',
-    name: 'Độ ẩm đất thấp',
-    severity: 'warning',
-    condition: (sensor) => sensor.moisture >= 20 && sensor.moisture < 30,
-    message: (sensor) => `Độ ẩm đất ${sensor.moisture.toFixed(1)}% — thấp hơn ngưỡng khuyến nghị (<30%). Nên tưới sớm.`
-  },
-  {
-    id: 'ec-critical',
-    name: 'Độ mặn (EC) cao',
-    severity: 'critical',
-    condition: (sensor) => sensor.ec > 3000,
-    message: (sensor) => `EC ${sensor.ec} µS/cm — ĐẤT NHIỄM MẶN NGUY HIỂM (>3000). Cần xả mặn ngay!`
-  },
-  {
-    id: 'ph-warning-low',
-    name: 'pH đất quá thấp',
-    severity: 'warning',
-    condition: (sensor) => sensor.ph < 4.0,
-    message: (sensor) => `pH ${sensor.ph.toFixed(1)} — đất quá chua (<4.0). Cà phê cần pH 5.0-6.5.`
-  },
-  {
-    id: 'ph-warning-high',
-    name: 'pH đất quá cao',
-    severity: 'warning',
-    condition: (sensor) => sensor.ph > 8.0,
-    message: (sensor) => `pH ${sensor.ph.toFixed(1)} — đất quá kiềm (>8.0). Cà phê cần pH 5.0-6.5.`
-  },
-  {
-    id: 'temperature-critical',
-    name: 'Nhiệt độ cao',
-    severity: 'critical',
-    condition: (sensor) => sensor.temperature > 40,
-    message: (sensor) => `Nhiệt độ ${sensor.temperature.toFixed(1)}°C — QUÁ CAO (>40°C). Cây bị stress nhiệt!`
-  }
-];
+async function persistAlerts() {
+  try {
+    const dir = path.dirname(ALERTS_FILE);
+    if (!fsSync.existsSync(dir)) {
+      fsSync.mkdirSync(dir, { recursive: true });
+    }
+    await fs.writeFile(ALERTS_FILE, JSON.stringify(alerts, null, 2));
+  } catch {}
+}
+
+async function loadAlerts() {
+  try {
+    const data = await fs.readFile(ALERTS_FILE, 'utf8');
+    alerts = JSON.parse(data);
+    if (alerts.length > 0) {
+      const maxId = Math.max(...alerts.map(a => {
+        const match = a.id.match(/alert-(\d+)-/);
+        return match ? parseInt(match[1]) : 0;
+      }));
+      alertIdCounter = maxId + 1;
+    }
+  } catch {}
+}
+
+async function init() {
+  await loadAlerts();
+}
 
 /**
  * Check if an alert is in cooldown
@@ -159,6 +146,7 @@ function createAlert({ ruleId, severity, title, message, zoneId, source }) {
   }
 
   console.log(`[Alert][${severity.toUpperCase()}] ${title}: ${message}`);
+  persistAlerts();
   return alert;
 }
 
@@ -218,5 +206,7 @@ module.exports = {
   acknowledge,
   getAlerts,
   getSummary,
-  createAlert
+  createAlert,
+  loadAlerts,
+  init
 };
